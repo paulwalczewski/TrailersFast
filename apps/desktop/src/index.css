@@ -1,0 +1,23 @@
+/* Tailwind v4 first, then HeroUI v3 styles. Order matters. */
+@import "tailwindcss";
+@import "@heroui/styles";
+
+/* Trailers Fast — light blue & white light theme.
+   Overrides HeroUI's default light-mode oklch tokens. */
+:root,
+[data-theme="light"] {
+  --background: oklch(0.985 0.012 240); /* whisper light-blue page */
+  --surface: oklch(1 0 0); /* white cards/panels */
+  --surface-secondary: oklch(0.968 0.014 240);
+  --surface-tertiary: oklch(0.95 0.016 240);
+  --accent: oklch(0.66 0.16 250); /* light blue brand / CTA (white text readable) */
+  --focus: var(--accent);
+  --border: oklch(0.9 0.02 240);
+  --separator: oklch(0.93 0.016 240);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}

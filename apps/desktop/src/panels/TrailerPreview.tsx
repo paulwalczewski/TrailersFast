@@ -1,0 +1,137 @@
+import { Player, type PlayerRef } from "@remotion/player";
+import {
+  buildTrailerClips,
+  byId,
+  canvasFor,
+  introActive,
+  totalFrames,
+  watermarkActive,
+} from "@trailerfast/core";
+import { useTrailerStore } from "@trailerfast/state";
+import { type RefObject, useEffect, useMemo } from "react";
+import type { IntroProps } from "../composition/IntroTitle";
+import { PREVIEW_FPS, TrailerComposition, type PreviewClip } from "../composition/TrailerComposition";
+import type { WatermarkProps } from "../composition/WatermarkOverlay";
+import { engine } from "../engine";
+
+type Props = {
+  playerRef: RefObject<PlayerRef | null>;
+  onFrame: (frame: number) => void;
+  /** CSS max-height for the preview (e.g. "30vh" inline, "66vh" in the modal). */
+  maxHeight?: string;
+};
+
+export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props) {
+  const markers = useTrailerStore((s) => s.markers);
+  const assets = useTrailerStore((s) => s.assets);
+  const intro = useTrailerStore((s) => s.intro);
+  const watermark = useTrailerStore((s) => s.watermark);
+  const proxies = useTrailerStore((s) => s.proxies);
+  const settings = useTrailerStore((s) => s.settings);
+
+  const { width, height } = canvasFor(settings.aspectRatio, 1080);
+
+  const assetsById = useMemo(() => byId(assets), [assets]);
+
+  const clips = useMemo<PreviewClip[]>(
+    () =>
+      buildTrailerClips(markers, assetsById, PREVIEW_FPS).map((c) => {
+        const proxy = proxies[c.proxyKey];
+        // Proxy plays linearly from 0 (smooth); source+trim is the fallback until ready.
+        return proxy
+          ? { id: c.markerId, src: engine.toPlayableUrl(proxy), trimBeforeInFrames: 0, durationInFrames: c.durationInFrames }
+          : {
+              id: c.markerId,
+              src: engine.toPlayableUrl(c.assetPath),
+              trimBeforeInFrames: c.trimBeforeInFrames,
+              durationInFrames: c.durationInFrames,
+            };
+      }),
+    [markers, assetsById, proxies],
+  );
+
+  const durationInFrames = Math.max(1, totalFrames(clips));
+
+  const introProps = useMemo<IntroProps | null>(() => {
+    if (!introActive(intro)) return null;
+    const introFrames = Math.min(Math.round(intro.durationSec * PREVIEW_FPS), durationInFrames);
+    return {
+      text: intro.text,
+      description: intro.description,
+      fontFamily: intro.fontFamily,
+      headingWeight: intro.headingWeight,
+      fontSizePx: intro.fontSizePx,
+      color: intro.color,
+      align: intro.align,
+      vAlign: intro.vAlign,
+      animation: intro.animation,
+      durationInFrames: introFrames,
+      shadowEnabled: intro.shadowEnabled,
+      shadowIntensity: intro.shadowIntensity,
+      shadowX: intro.shadowX,
+      shadowY: intro.shadowY,
+    };
+  }, [intro, durationInFrames]);
+
+  const watermarkProps = useMemo<WatermarkProps | null>(() => {
+    if (!watermarkActive(watermark)) return null;
+    return {
+      text: watermark.text,
+      position: watermark.position,
+      fontSizePx: watermark.fontSizePx,
+      color: watermark.color,
+      opacity: watermark.opacity,
+    };
+  }, [watermark]);
+
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    const handler = () => onFrame(p.getCurrentFrame());
+    p.addEventListener("frameupdate", handler);
+    return () => p.removeEventListener("frameupdate", handler);
+  }, [playerRef, onFrame, clips.length]);
+
+  // Size the box to the exact composition ratio, capped by maxHeight and full width,
+  // so the video fills it (no black bars, controls sit on the video).
+  const boxStyle = {
+    width: `min(100%, calc(${maxHeight} * ${width} / ${height}))`,
+    aspectRatio: `${width} / ${height}`,
+  } as const;
+
+  if (clips.length === 0) {
+    return (
+      <div
+        className="mx-auto grid place-items-center rounded-xl border border-separator bg-black/90 text-center text-sm text-white/60"
+        style={boxStyle}
+      >
+        Mark clips on the source timeline to build your trailer
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto overflow-hidden rounded-xl border border-separator bg-black" style={boxStyle}>
+      <Player
+        ref={playerRef}
+        component={TrailerComposition}
+        inputProps={{
+          clips,
+          intro: introProps,
+          watermark: watermarkProps,
+          flipHorizontal: settings.flipHorizontal,
+          fitMode: settings.fitMode,
+        }}
+        durationInFrames={durationInFrames}
+        compositionWidth={width}
+        compositionHeight={height}
+        fps={PREVIEW_FPS}
+        style={{ width: "100%", height: "100%" }}
+        controls
+        clickToPlay
+        spaceKeyToPlayOrPause={false}
+        loop
+      />
+    </div>
+  );
+}

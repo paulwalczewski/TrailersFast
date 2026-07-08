@@ -1,0 +1,43 @@
+/**
+ * Turns markers into the ordered clip list the Remotion preview (and, later,
+ * the FFmpeg export) consume. Frame values are computed against the preview fps.
+ */
+import type { Asset, ClipMarker } from "./model";
+import { orderedMarkers } from "./timeline";
+
+export type TrailerClip = {
+  markerId: string;
+  assetId: string;
+  /** Source video path; the UI maps this to a playable URL per platform. */
+  assetPath: string;
+  /** In-point within the source, in frames. */
+  trimBeforeInFrames: number;
+  /** Visible length, in frames. */
+  durationInFrames: number;
+  /** Cache key for this clip's preview proxy. */
+  proxyKey: string;
+};
+
+export function buildTrailerClips(
+  markers: ClipMarker[],
+  assetsById: Record<string, Asset>,
+  fps: number,
+): TrailerClip[] {
+  return orderedMarkers(markers).map((m) => ({
+    markerId: m.id,
+    assetId: m.assetId,
+    assetPath: assetsById[m.assetId]?.path ?? "",
+    trimBeforeInFrames: Math.round(m.startSec * fps),
+    durationInFrames: Math.max(1, Math.round(m.lengthSec * fps)),
+    proxyKey: proxyKey(m),
+  }));
+}
+
+export function totalFrames(clips: { durationInFrames: number }[]): number {
+  return clips.reduce((n, c) => n + c.durationInFrames, 0);
+}
+
+/** Stable cache key for a clip's preview proxy (source + in-point + length). */
+export function proxyKey(m: { assetId: string; startSec: number; lengthSec: number }): string {
+  return `${m.assetId}:${m.startSec.toFixed(3)}:${m.lengthSec.toFixed(3)}`;
+}
