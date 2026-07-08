@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
+# tauri sidecar binaries (large; fetched/placed per platform)
+apps/desktop/src-tauri/binaries/
+
+# logs / os
+*.log
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# local agent tooling
+.claude/
+.agents/
