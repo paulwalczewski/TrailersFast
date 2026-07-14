@@ -21,3 +21,39 @@ body,
 #root {
   height: 100%;
 }
+
+/* Fixed desktop layout: the page itself never scrolls — only inner panes
+   (work area, sidebar tab panels) do. Without this, tall sidebar content or
+   portal-rendered popovers can inflate the document and add a second,
+   page-level scrollbar on top of the panes' own. */
+html,
+body {
+  overflow: hidden;
+}
+
+/* Sliders: card-bg light blue for the filled part instead of the accent —
+   sliders are everywhere and the primary color made them shout over CTAs.
+   HeroUI paints the fill in three pieces: the .slider__fill bar plus the
+   track's start/end border caps (data-fill-start/end) — recolor all three. */
+.slider .slider__fill {
+  background-color: var(--surface-secondary);
+}
+/* Brighter unselected area + a crisp 1px light-gray ring around the whole
+   track. Ring (box-shadow), not border: HeroUI already uses the track's
+   inline borders as the fill's rounded end caps. */
+.slider .slider__track {
+  background-color: var(--surface-tertiary);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.slider[data-orientation="horizontal"] .slider__track[data-fill-start="true"] {
+  border-inline-start-color: var(--surface-secondary);
+}
+.slider[data-orientation="horizontal"] .slider__track[data-fill-end="true"] {
+  border-inline-end-color: var(--surface-secondary);
+}
+.slider[data-orientation="vertical"] .slider__track[data-fill-start="true"] {
+  border-bottom-color: var(--surface-secondary);
+}
+.slider[data-orientation="vertical"] .slider__track[data-fill-end="true"] {
+  border-top-color: var(--surface-secondary);
+}

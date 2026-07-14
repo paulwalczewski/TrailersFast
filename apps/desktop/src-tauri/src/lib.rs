@@ -1,6 +1,10 @@
 pub mod export;
+pub mod mcp;
+pub mod scenes;
 
 use base64::Engine;
+use std::sync::Arc;
+use tauri::Manager;
 use export::{ExportPlan, run_export_inner};
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::download::auto_download;
@@ -107,8 +111,35 @@ fn probe_media_blocking(path: &str) -> Result<MediaInfo, String> {
     Ok(info)
 }
 
-/// Monotonic id so concurrent thumbnail jobs never share a temp file name.
+/// Monotonic id so concurrent frame-extraction jobs never share a temp file name.
 static THUMB_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Extract a single frame at `at_sec` as JPEG bytes, `width`px wide.
+/// -ss before -i = fast keyframe seek. Blocking; shared by the thumbnail
+/// pipeline and the MCP `get_frames` tool.
+pub(crate) fn extract_frame_jpeg(path: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, String> {
+    ensure_ffmpeg()?;
+    let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let outfile = std::env::temp_dir().join(format!("tf_frame_{}_{job}.jpg", std::process::id()));
+
+    let mut cmd = FfmpegCommand::new();
+    cmd.arg("-y")
+        .arg("-ss")
+        .arg(format!("{at_sec}"))
+        .input(path)
+        .arg("-frames:v")
+        .arg("1")
+        .arg("-vf")
+        .arg(format!("scale={width}:-2"))
+        .arg("-q:v")
+        .arg("4")
+        .arg(outfile.to_string_lossy().to_string());
+    run_to_completion(cmd)?;
+
+    let bytes = std::fs::read(&outfile).map_err(|e| format!("no frame at {at_sec}s: {e}"))?;
+    let _ = std::fs::remove_file(&outfile);
+    Ok(bytes)
+}
 
 /// Extract one frame at each timestamp, scaled small, returned as base64 JPEG
 /// data URIs the webview can render directly (no asset-protocol config needed).
@@ -118,37 +149,14 @@ async fn generate_thumbnails(path: String, at_secs: Vec<f64>) -> Result<Vec<Stri
 }
 
 fn generate_thumbnails_blocking(path: &str, at_secs: &[f64]) -> Result<Vec<String>, String> {
-    ensure_ffmpeg()?;
-    let tmp = std::env::temp_dir();
-    let pid = std::process::id();
-    let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut out = Vec::with_capacity(at_secs.len());
-
-    for (i, t) in at_secs.iter().enumerate() {
-        let outfile = tmp.join(format!("tf_thumb_{pid}_{job}_{i}.jpg"));
-        let outstr = outfile.to_string_lossy().to_string();
-
-        // -ss before -i = fast keyframe seek; single frame; scaled to 160px wide.
-        let mut cmd = FfmpegCommand::new();
-        cmd.arg("-y")
-            .arg("-ss")
-            .arg(format!("{t}"))
-            .input(path)
-            .arg("-frames:v")
-            .arg("1")
-            .arg("-vf")
-            .arg("scale=160:-2")
-            .arg(&outstr);
-        if run_to_completion(cmd).is_err() {
-            continue;
-        }
-        if let Ok(bytes) = std::fs::read(&outfile) {
+    for t in at_secs {
+        // A failed frame is skipped, keeping the rest of the strip usable.
+        if let Ok(bytes) = extract_frame_jpeg(path, *t, 160) {
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             out.push(format!("data:image/jpeg;base64,{b64}"));
-            let _ = std::fs::remove_file(&outfile);
         }
     }
-
     Ok(out)
 }
 
@@ -302,13 +310,25 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Embedded MCP server (AI integration): localhost HTTP, token-gated.
+            let bridge = Arc::new(mcp::McpBridge::new(app.handle().clone()));
+            let token = mcp::load_or_create_token(app.handle())?;
+            app.manage(mcp::McpState::new(bridge, token));
+            if mcp::load_enabled(app.handle()) {
+                app.state::<mcp::McpState>().start();
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             probe_media,
             generate_thumbnails,
             generate_proxy,
-            export_trailer
+            export_trailer,
+            mcp::mcp_status,
+            mcp::mcp_respond,
+            mcp::mcp_set_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

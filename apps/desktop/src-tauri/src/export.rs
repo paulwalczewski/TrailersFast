@@ -61,6 +61,9 @@ pub struct ExportPlan {
     pub intro: Option<ExportIntro>,
     /// Base64 PNG of the intro (rendered by the UI, supports emoji), overlaid over time.
     pub intro_image: Option<String>,
+    /// Title card over the last seconds — same mechanics as the intro.
+    pub outro: Option<ExportIntro>,
+    pub outro_image: Option<String>,
     pub watermark: Option<ExportWatermark>,
     pub width: u32,
     pub height: u32,
@@ -349,16 +352,18 @@ pub fn overlay_will_be_skipped(plan: &ExportPlan) -> bool {
     plan.watermark.is_some() && !(has_drawtext() && resolve_overlay_font(plan).is_some())
 }
 
-/// Overlay x/y expressions for the intro image's slide animation (0/0 otherwise).
-fn overlay_slide(animation: &str, e: f64, de: f64) -> (String, String) {
+/// Overlay x/y expressions for a title-card image's slide animation (0/0
+/// otherwise). `t` is the time expression relative to the card's start —
+/// literal "t" for the intro, "(t-START)" for the outro.
+fn overlay_slide(animation: &str, e: f64, de: f64, t: &str) -> (String, String) {
     match animation {
         "slideLeft" => (
-            format!("if(lt(t,{e:.3}),-(main_w*0.11)*(1-t/{e:.3}),if(lt(t,{de:.3}),0,(main_w*0.11)*((t-{de:.3})/{e:.3})))"),
+            format!("if(lt({t},{e:.3}),-(main_w*0.11)*(1-{t}/{e:.3}),if(lt({t},{de:.3}),0,(main_w*0.11)*(({t}-{de:.3})/{e:.3})))"),
             "0".to_string(),
         ),
         "slideUp" => (
             "0".to_string(),
-            format!("if(lt(t,{e:.3}),(main_h*0.13)*(1-t/{e:.3}),if(lt(t,{de:.3}),0,-(main_h*0.13)*((t-{de:.3})/{e:.3})))"),
+            format!("if(lt({t},{e:.3}),(main_h*0.13)*(1-{t}/{e:.3}),if(lt({t},{de:.3}),0,-(main_h*0.13)*(({t}-{de:.3})/{e:.3})))"),
         ),
         _ => ("0".to_string(), "0".to_string()),
     }
@@ -384,6 +389,7 @@ fn build_filter_complex(
     silence_index: &std::collections::HashMap<usize, usize>,
     drawtext_font: Option<&str>,
     intro_img_input: Option<usize>,
+    outro_img_input: Option<usize>,
 ) -> (String, String) {
     let n = plan.clips.len();
     let (w, h, fps) = (plan.width, plan.height, plan.fps);
@@ -429,7 +435,7 @@ fn build_filter_complex(
         let e = (0.4_f64).min(d * 0.3).max(0.01);
         let de = d - e;
         fc.push_str(&format!(";[{idx}:v]fade=t=out:st={de:.3}:d={e:.3}:alpha=1[introf]"));
-        let (ox, oy) = overlay_slide(&intro.animation, e, de);
+        let (ox, oy) = overlay_slide(&intro.animation, e, de, "t");
         fc.push_str(&format!(
             ";[{cur}][introf]overlay=x='{ox}':y='{oy}':enable='between(t,0,{d:.3})'[outv]"
         ));
@@ -437,6 +443,28 @@ fn build_filter_complex(
     } else if let (Some(_), Some(intro)) = (drawtext_font, &plan.intro) {
         fc.push_str(&format!(";[{cur}]{}[outv]", build_intro_chain(intro, w, h)));
         cur = "outv".to_string();
+    }
+    // Outro: the same image-overlay mechanics, shifted to the end of the
+    // trailer. setpts moves the image frames to start at T0 (otherwise the
+    // overlay would consume them at t=0 and only its faded-out last frame
+    // would remain by the time the enable window opens); fade in + out
+    // mirrors the preview's title-card animation.
+    if let (Some(idx), Some(outro)) = (outro_img_input, &plan.outro) {
+        let total: f64 = plan.clips.iter().map(|c| c.length_sec).sum();
+        let d = outro.duration_sec.min(total);
+        let e = (0.4_f64).min(d * 0.3).max(0.01);
+        let de = d - e;
+        let t0 = (total - d).max(0.0);
+        fc.push_str(&format!(
+            ";[{idx}:v]fade=t=in:st=0:d={e:.3}:alpha=1,fade=t=out:st={de:.3}:d={e:.3}:alpha=1,setpts=PTS+{t0:.3}/TB[outrof]"
+        ));
+        let t_rel = format!("(t-{t0:.3})");
+        let (ox, oy) = overlay_slide(&outro.animation, e, de, &t_rel);
+        fc.push_str(&format!(
+            ";[{cur}][outrof]overlay=x='{ox}':y='{oy}':enable='between(t,{t0:.3},{:.3})'[outrov]",
+            t0 + d
+        ));
+        cur = "outrov".to_string();
     }
     (fc, format!("[{cur}]"))
 }
@@ -457,16 +485,17 @@ pub fn run_export_inner(
     let total: f64 = plan.clips.iter().map(|c| c.length_sec).sum();
     let drawtext_font = if has_drawtext() { resolve_overlay_font(plan) } else { None };
 
-    // Decode the UI-rendered intro image (supports emoji + fonts) to a temp PNG.
-    let intro_png: Option<std::path::PathBuf> = plan.intro_image.as_ref().and_then(|b64| {
-        base64::engine::general_purpose::STANDARD
-            .decode(b64)
-            .ok()
-            .and_then(|bytes| {
-                let p = std::env::temp_dir().join(format!("tf_intro_{}.png", std::process::id()));
+    // Decode the UI-rendered title-card images (support emoji + fonts) to temp PNGs.
+    let decode_png = |b64: &Option<String>, name: &str| -> Option<std::path::PathBuf> {
+        b64.as_ref().and_then(|b64| {
+            base64::engine::general_purpose::STANDARD.decode(b64).ok().and_then(|bytes| {
+                let p = std::env::temp_dir().join(format!("tf_{name}_{}.png", std::process::id()));
                 std::fs::write(&p, bytes).ok().map(|_| p)
             })
-    });
+        })
+    };
+    let intro_png = decode_png(&plan.intro_image, "intro");
+    let outro_png = decode_png(&plan.outro_image, "outro");
 
     let mut cmd = FfmpegCommand::new();
     cmd.arg("-y").arg("-hide_banner").arg("-nostdin");
@@ -496,23 +525,30 @@ pub fn run_export_inner(
         }
     }
 
-    // Intro image input (looping, bounded to the intro duration).
-    let intro_img_input = if let (Some(png), Some(intro)) = (&intro_png, &plan.intro) {
+    // Title-card image inputs (looping, bounded to each card's duration).
+    let mut img_input = |png: &Option<std::path::PathBuf>, card: &Option<ExportIntro>| -> Option<usize> {
+        let (png, card) = (png.as_ref()?, card.as_ref()?);
         cmd.arg("-loop")
             .arg("1")
             .arg("-t")
-            .arg(fmt(intro.duration_sec))
+            .arg(fmt(card.duration_sec))
             .arg("-i")
             .arg(png.to_string_lossy().to_string());
         let idx = next;
         next += 1;
         Some(idx)
-    } else {
-        None
     };
+    let intro_img_input = img_input(&intro_png, &plan.intro);
+    let outro_img_input = img_input(&outro_png, &plan.outro);
     let _ = next;
 
-    let (fc, vlabel) = build_filter_complex(plan, &silence_index, drawtext_font.as_deref(), intro_img_input);
+    let (fc, vlabel) = build_filter_complex(
+        plan,
+        &silence_index,
+        drawtext_font.as_deref(),
+        intro_img_input,
+        outro_img_input,
+    );
 
     cmd.arg("-filter_complex")
         .arg(&fc)

@@ -42,31 +42,37 @@ export function fileRefFromPath(path: string): FileRef {
   return { path, fileName: path.split(/[/\\]/).pop() ?? path };
 }
 
+/** Per-file import outcome, resolved once metadata is probed. */
+export type IngestOutcome = { id: string; fileName: string; ok: boolean; error?: string };
+
 /**
  * Adds placeholder cards immediately (instant feedback), then probes metadata
  * and generates thumbnails in the background, updating each card as it resolves.
+ * Returns one promise per file that settles when its probe completes (thumbnails
+ * keep generating afterwards) — UI callers ignore them; the MCP bridge awaits them.
  */
-export function useIngest(): (files: FileRef[]) => void {
+export function useIngest(): (files: FileRef[]) => Promise<IngestOutcome>[] {
   const addPlaceholder = useTrailerStore((s) => s.addPlaceholder);
   const setAssetProbed = useTrailerStore((s) => s.setAssetProbed);
   const setAssetMedia = useTrailerStore((s) => s.setAssetMedia);
   const removeAsset = useTrailerStore((s) => s.removeAsset);
 
   return useCallback(
-    (files: FileRef[]) => {
-      for (const f of files) {
+    (files: FileRef[]) =>
+      files.map(async (f): Promise<IngestOutcome> => {
         const id = addPlaceholder(f.path, f.fileName);
+        let info;
+        try {
+          info = await engine.probe(f);
+          setAssetProbed(id, info);
+        } catch (err) {
+          console.error(`Failed to import ${f.fileName}`, err);
+          removeAsset(id);
+          return { id, fileName: f.fileName, ok: false, error: String(err) };
+        }
+
+        // Thumbnails are cosmetic — a failure logs but keeps the asset.
         void (async () => {
-          let info;
-          try {
-            info = await engine.probe(f);
-            setAssetProbed(id, info);
-          } catch (err) {
-            console.error(`Failed to import ${f.fileName}`, err);
-            removeAsset(id);
-            return;
-          }
-          // Thumbnails are cosmetic — a failure logs but keeps the asset.
           const times = Array.from({ length: FILMSTRIP_FRAMES }, (_, i) =>
             Math.max(0, (info.durationSec * (i + 0.5)) / FILMSTRIP_FRAMES),
           );
@@ -86,8 +92,9 @@ export function useIngest(): (files: FileRef[]) => void {
             releaseThumbnailSlot();
           }
         })();
-      }
-    },
+
+        return { id, fileName: f.fileName, ok: true };
+      }),
     [addPlaceholder, setAssetProbed, setAssetMedia, removeAsset],
   );
 }

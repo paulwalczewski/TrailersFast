@@ -1,174 +1,56 @@
-import { Button, Input, Label, TextField } from "@heroui/react";
-import {
-  HEADING_WEIGHTS,
-  INTRO_ANIMATIONS,
-  INTRO_FONTS,
-  type IntroAnimation,
-  WATERMARK_POSITIONS,
-  type WatermarkPosition,
-} from "@trailerfast/core";
+import { Input, Label, TextField } from "@heroui/react";
+import { WATERMARK_POSITIONS, type WatermarkPosition } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
+import { type ReactNode, useState } from "react";
 import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import { TitleCardForm } from "./TitleCardForm";
 
-const ALIGNMENTS = ["left", "center", "right"] as const;
-const VALIGNS = ["top", "middle", "bottom"] as const;
-const FONT_OPTIONS = INTRO_FONTS.map((f) => ({ id: f, label: f }));
-
-function IntroForm() {
-  const intro = useTrailerStore((s) => s.intro);
-  const update = useTrailerStore((s) => s.updateIntro);
+/** Collapsible section with an "On" badge when its feature is enabled. */
+function Section({
+  title,
+  enabled,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  enabled: boolean;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-semibold">Intro</h2>
-        <p className="text-xs text-muted">
-          Optional. Shows over the first seconds of the trailer, then animates out.
-        </p>
-      </div>
-
-      <LabeledSwitch
-        label="Enable intro"
-        checked={intro.enabled}
-        onChange={(v) => update({ enabled: v })}
-      />
-
-      <div
-        className={
-          intro.enabled ? "flex flex-col gap-4" : "pointer-events-none flex flex-col gap-4 opacity-50"
-        }
-        aria-disabled={!intro.enabled}
+    <div className="rounded-xl border border-separator bg-surface-secondary">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-tertiary"
       >
-        <TextField value={intro.text} onChange={(v) => update({ text: v })}>
-          <Label>Heading</Label>
-          <Input placeholder="Your trailer title" />
-        </TextField>
-
-        <div className="flex flex-col gap-1.5">
-          <Label>Description</Label>
-          <textarea
-            value={intro.description}
-            onChange={(e) => update({ description: e.target.value })}
-            placeholder="A longer subtitle or tagline…"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-accent"
-          />
-        </div>
-
-        <LabeledSelect
-          label="Font"
-          selectedKey={intro.fontFamily}
-          options={FONT_OPTIONS}
-          onChange={(id) => update({ fontFamily: id })}
-          renderOption={(o) => <span style={{ fontFamily: o.id }}>{o.label}</span>}
-        />
-
-        <LabeledSelect
-          label="Heading weight"
-          selectedKey={String(intro.headingWeight)}
-          options={HEADING_WEIGHTS}
-          onChange={(id) => update({ headingWeight: Number(id) })}
-          renderOption={(o) => <span style={{ fontWeight: Number(o.id) }}>{o.label}</span>}
-        />
-
-        <LabeledSlider
-          label="Font size"
-          value={intro.fontSizePx}
-          min={20}
-          max={160}
-          step={2}
-          onChange={(v) => update({ fontSizePx: v })}
-          format={(v) => `${Math.round(v)}px`}
-        />
-
-        <LabeledSelect
-          label="Animation"
-          selectedKey={intro.animation}
-          options={INTRO_ANIMATIONS}
-          onChange={(id) => update({ animation: id as IntroAnimation })}
-        />
-
-        <LabeledSlider
-          label="Length"
-          value={intro.durationSec}
-          min={1}
-          max={10}
-          step={0.5}
-          onChange={(v) => update({ durationSec: v })}
-          format={(v) => `${v.toFixed(1)}s`}
-        />
-
-        <div className="flex flex-col gap-1.5">
-          <Label>Horizontal align</Label>
-          <div className="flex gap-2">
-            {ALIGNMENTS.map((a) => (
-              <Button
-                key={a}
-                variant={intro.align === a ? "primary" : "outline"}
-                onPress={() => update({ align: a })}
-                className="flex-1 capitalize"
-              >
-                {a}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label>Vertical align</Label>
-          <div className="flex gap-2">
-            {VALIGNS.map((a) => (
-              <Button
-                key={a}
-                variant={intro.vAlign === a ? "primary" : "outline"}
-                onPress={() => update({ vAlign: a })}
-                className="flex-1 capitalize"
-              >
-                {a}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <LabeledColor label="Color" value={intro.color} onChange={(v) => update({ color: v })} />
-
-        <LabeledSwitch
-          label="Text shadow"
-          checked={intro.shadowEnabled}
-          onChange={(v) => update({ shadowEnabled: v })}
-        />
-        {intro.shadowEnabled ? (
-          <>
-            <LabeledSlider
-              label="Shadow intensity"
-              value={intro.shadowIntensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => update({ shadowIntensity: v })}
-              format={(v) => `${Math.round(v * 100)}%`}
-            />
-            <LabeledSlider
-              label="Shadow X"
-              value={intro.shadowX}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowX: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-            <LabeledSlider
-              label="Shadow Y"
-              value={intro.shadowY}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowY: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-          </>
-        ) : null}
-      </div>
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="flex items-center gap-2">
+          {enabled ? (
+            <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
+              On
+            </span>
+          ) : null}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </button>
+      {open ? <div className="border-t border-separator p-3">{children}</div> : null}
     </div>
   );
 }
@@ -179,10 +61,7 @@ function WatermarkForm() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-semibold">Watermark</h2>
-        <p className="text-xs text-muted">Optional. Shown across the whole trailer.</p>
-      </div>
+      <p className="text-xs text-muted">Optional. Shown across the whole trailer.</p>
 
       <LabeledSwitch
         label="Enable watermark"
@@ -235,11 +114,33 @@ function WatermarkForm() {
 }
 
 export function TextsTab() {
+  const intro = useTrailerStore((s) => s.intro);
+  const updateIntro = useTrailerStore((s) => s.updateIntro);
+  const outro = useTrailerStore((s) => s.outro);
+  const updateOutro = useTrailerStore((s) => s.updateOutro);
+  const wmEnabled = useTrailerStore((s) => s.watermark.enabled);
+
   return (
-    <div className="flex flex-col gap-6">
-      <IntroForm />
-      <div className="border-t border-separator" />
-      <WatermarkForm />
+    <div className="flex flex-col gap-3">
+      <Section title="Intro" enabled={intro.enabled} defaultOpen>
+        <TitleCardForm
+          name="intro"
+          hint="Optional. Shows over the first seconds of the trailer, then animates out."
+          config={intro}
+          onChange={updateIntro}
+        />
+      </Section>
+      <Section title="Outro" enabled={outro.enabled}>
+        <TitleCardForm
+          name="outro"
+          hint="Optional. Shows over the last seconds of the trailer."
+          config={outro}
+          onChange={updateOutro}
+        />
+      </Section>
+      <Section title="Watermark" enabled={wmEnabled}>
+        <WatermarkForm />
+      </Section>
     </div>
   );
 }

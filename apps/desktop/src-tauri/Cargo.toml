@@ -26,3 +26,9 @@ tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 ffmpeg-sidecar = "2"
 base64 = "0.22"
+# Embedded MCP server (AI integration)
+rmcp = { version = "2", features = ["server", "macros", "transport-streamable-http-server", "schemars"] }
+axum = "0.8"
+tokio = { version = "1", features = ["net", "sync", "time", "macros"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }

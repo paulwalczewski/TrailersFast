@@ -10,11 +10,14 @@ import {
   proxyKey,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type PointerEvent, useMemo, useRef } from "react";
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { engine } from "../engine";
 import { clipBoxStyle, useMediaReady } from "../ui/clipMedia";
 import { LabeledSlider } from "../ui/Fields";
 import { ModalShell } from "../ui/ModalShell";
+
+const LOCKED_AXIS_HINT =
+  "The clip fits the canvas exactly on this axis — zoom in to unlock repositioning.";
 
 /**
  * Reposition a clip within the trailer canvas: pan (drag or sliders) + zoom.
@@ -31,6 +34,16 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
   const asset = marker ? byId(assets)[marker.assetId] : undefined;
   const previewRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  // "Drag to reposition" hint: once the user zooms for the first time (per
+  // modal open), they've discovered the controls — fade the hint out shortly.
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => clearTimeout(hintTimer.current ?? undefined), []);
+  function onZoom(v: number) {
+    setMarkerTransform(markerId, { zoom: v / 100 });
+    hintTimer.current ??= setTimeout(() => setHintDismissed(true), 3000);
+  }
 
   const canvas = canvasFor(settings.aspectRatio, 1080);
   const transform = marker?.transform ?? defaultTransform();
@@ -150,8 +163,22 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
           onSeeked={markReady}
           style={{ ...mediaStyle, opacity: videoReady ? 1 : 0 }}
         />
-        {pannable ? (
-          <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-black/55 px-2 py-0.5 text-[11px] text-white/90">
+        {pannable && !hintDismissed ? (
+          <span className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded bg-black/55 px-2 py-0.5 text-[11px] text-white/90">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2v20M2 12h20" />
+              <path d="m9 5 3-3 3 3M9 19l3 3 3-3M5 9 2 12l3 3M19 9l3 3-3 3" />
+            </svg>
             Drag to reposition
           </span>
         ) : null}
@@ -159,39 +186,38 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
 
       <div className="mt-4 flex flex-col gap-3">
         <LabeledSlider
-          label="Horizontal"
-          value={Math.round(transform.offsetX * 100)}
-          min={-100}
-          max={100}
-          step={1}
-          disabled={pan.x <= 0}
-          onChange={(v) => setMarkerTransform(markerId, { offsetX: v / 100 })}
-          format={(v) => (pan.x > 0 ? `${v}%` : "—")}
-        />
-        <LabeledSlider
-          label="Vertical"
-          value={Math.round(transform.offsetY * 100)}
-          min={-100}
-          max={100}
-          step={1}
-          disabled={pan.y <= 0}
-          onChange={(v) => setMarkerTransform(markerId, { offsetY: v / 100 })}
-          format={(v) => (pan.y > 0 ? `${v}%` : "—")}
-        />
-        <LabeledSlider
           label="Zoom"
           value={Math.round(transform.zoom * 100)}
           min={100}
           max={MAX_CLIP_ZOOM * 100}
           step={1}
-          onChange={(v) => setMarkerTransform(markerId, { zoom: v / 100 })}
+          onChange={onZoom}
           format={(v) => `${v}%`}
         />
-        {!pannable ? (
-          <p className="text-xs text-muted">
-            The clip fits the canvas exactly on both axes — zoom in to unlock repositioning.
-          </p>
-        ) : null}
+        <div title={pan.x <= 0 ? LOCKED_AXIS_HINT : undefined}>
+          <LabeledSlider
+            label="Horizontal"
+            value={Math.round(transform.offsetX * 100)}
+            min={-100}
+            max={100}
+            step={1}
+            disabled={pan.x <= 0}
+            onChange={(v) => setMarkerTransform(markerId, { offsetX: v / 100 })}
+            format={(v) => (pan.x > 0 ? `${v}%` : "—")}
+          />
+        </div>
+        <div title={pan.y <= 0 ? LOCKED_AXIS_HINT : undefined}>
+          <LabeledSlider
+            label="Vertical"
+            value={Math.round(transform.offsetY * 100)}
+            min={-100}
+            max={100}
+            step={1}
+            disabled={pan.y <= 0}
+            onChange={(v) => setMarkerTransform(markerId, { offsetY: v / 100 })}
+            format={(v) => (pan.y > 0 ? `${v}%` : "—")}
+          />
+        </div>
       </div>
 
       <div className="mt-5 flex justify-between">

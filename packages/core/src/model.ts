@@ -195,6 +195,8 @@ export type Project = {
   assets: Asset[];
   markers: ClipMarker[];
   intro: IntroConfig;
+  /** Same shape as the intro — a title card over the last seconds of the trailer. */
+  outro: IntroConfig;
   watermark: WatermarkConfig;
   settings: Settings;
 };
@@ -248,10 +250,14 @@ export const defaultIntro = (): IntroConfig => ({
   shadowY: 2,
 });
 
+/** Outros share the intro's config shape and defaults. */
+export const defaultOutro = (): IntroConfig => defaultIntro();
+
 export const emptyProject = (): Project => ({
   assets: [],
   markers: [],
   intro: defaultIntro(),
+  outro: defaultOutro(),
   watermark: defaultWatermark(),
   settings: {
     defaultClipLengthSec: DEFAULT_CLIP_LENGTH_SEC,

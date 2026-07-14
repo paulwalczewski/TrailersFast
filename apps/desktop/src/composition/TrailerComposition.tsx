@@ -42,6 +42,8 @@ export type TrailerCompositionProps = {
   clips: PreviewClip[];
   /** Overlaid on the first frames of the trailer; null when disabled/empty. */
   intro: IntroProps | null;
+  /** Overlaid on the last frames of the trailer; null when disabled/empty. */
+  outro: IntroProps | null;
   /** Shown across the whole trailer; null when disabled/empty. */
   watermark: WatermarkProps | null;
   flipHorizontal: boolean;
@@ -109,14 +111,16 @@ function ClipVisual({ clip, fitMode, flipHorizontal }: ClipVisualProps) {
   );
 }
 
-/** Concatenates the marked clips back-to-back, with the intro overlaid on top. */
+/** Concatenates the marked clips back-to-back, with intro/outro overlaid on top. */
 export function TrailerComposition({
   clips,
   intro,
+  outro,
   watermark,
   flipHorizontal,
   fitMode,
 }: TrailerCompositionProps) {
+  const clipFrames = clips.reduce((n, c) => n + c.durationInFrames, 0);
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       <Series>
@@ -134,6 +138,15 @@ export function TrailerComposition({
       {intro && intro.durationInFrames > 0 ? (
         <Sequence durationInFrames={intro.durationInFrames}>
           <IntroTitle {...intro} />
+        </Sequence>
+      ) : null}
+
+      {outro && outro.durationInFrames > 0 ? (
+        <Sequence
+          from={Math.max(0, clipFrames - outro.durationInFrames)}
+          durationInFrames={outro.durationInFrames}
+        >
+          <IntroTitle {...outro} />
         </Sequence>
       ) : null}
 
