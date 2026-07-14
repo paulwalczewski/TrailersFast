@@ -49,22 +49,6 @@ export function clipRenderBox(
   };
 }
 
-/** How far (0..1 of the clip's edge) each axis can pan; 0 disables that control. */
-export function panRange(
-  srcW: number,
-  srcH: number,
-  canvasW: number,
-  canvasH: number,
-  fit: FitMode,
-  zoom: number,
-): { x: number; y: number } {
-  const box = clipRenderBox(srcW, srcH, canvasW, canvasH, fit, { offsetX: 0, offsetY: 0, zoom });
-  return {
-    x: Math.max(0, (box.width - canvasW) / 2),
-    y: Math.max(0, (box.height - canvasH) / 2),
-  };
-}
-
 /**
  * Integer scale + crop for the FFmpeg export: scale the source to
  * `scaleW×scaleH`, crop the `cropW×cropH` window at `cropX/cropY`, then pad to

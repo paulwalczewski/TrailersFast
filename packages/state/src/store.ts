@@ -10,6 +10,7 @@ import {
   type Settings,
   type WatermarkConfig,
   centeredClip,
+  clampClipResize,
   defaultTransform,
   emptyProject,
   nextOrder,
@@ -93,7 +94,11 @@ const assetSig = (assets: Asset[]) => assets.map((a) => `${a.id}:${a.selected ? 
 /** Which tracked fields differ between two docs (assets compared structurally). */
 const changedFields = (a: HistoryDoc, b: HistoryDoc): string[] =>
   HISTORY_KEYS.filter((k) =>
-    k === "assets" ? assetSig(a.assets) !== assetSig(b.assets) : a[k] !== b[k],
+    // Reference check first: this runs on every store mutation (incl. per-tick
+    // slider drags), so only build signatures when the array actually changed.
+    k === "assets"
+      ? a.assets !== b.assets && assetSig(a.assets) !== assetSig(b.assets)
+      : a[k] !== b[k],
   );
 /** Append `snapshot` to the undo stack (bounded) and drop the redo stack. */
 const pushPast = (s: { past: HistoryDoc[] }, snapshot: HistoryDoc) => ({
@@ -246,7 +251,13 @@ export const useTrailerStore = create<TrailerStore>()(
 
   resizeMarker: (markerId, startSec, lengthSec) =>
     set((s) => ({
-      markers: s.markers.map((m) => (m.id === markerId ? { ...m, startSec, lengthSec } : m)),
+      markers: s.markers.map((m) => {
+        if (m.id !== markerId) return m;
+        // Enforce the bounds here so every caller (drag, undo, future
+        // programmatic trims) gets a valid clip, not just the drag handler.
+        const dur = s.assets.find((a) => a.id === m.assetId)?.durationSec ?? 0;
+        return { ...m, ...clampClipResize(startSec, lengthSec, dur) };
+      }),
     })),
 
   setMarkerTransform: (markerId, patch) =>
