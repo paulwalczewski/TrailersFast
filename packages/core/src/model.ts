@@ -41,7 +41,30 @@ export type Asset = {
   selected: boolean;
   /** True while metadata is still being probed (shows a placeholder card). */
   loading: boolean;
+  /** True while the poster/filmstrip thumbnails are still being generated. */
+  mediaLoading: boolean;
 };
+
+/**
+ * Per-clip framing within the trailer canvas. Offsets are normalized against
+ * the overflow (how far the fitted clip extends past the canvas), so every
+ * value in [-1, 1] keeps the canvas fully covered — no black space possible.
+ */
+export type ClipTransform = {
+  /** Pan across the horizontal overflow: -1 = left edge, 0 = center, 1 = right edge. */
+  offsetX: number;
+  /** Pan across the vertical overflow: -1 = top edge, 0 = center, 1 = bottom edge. */
+  offsetY: number;
+  /** Extra zoom on top of the fit, 1..MAX_CLIP_ZOOM. */
+  zoom: number;
+};
+
+export const MAX_CLIP_ZOOM = 3;
+
+export const defaultTransform = (): ClipTransform => ({ offsetX: 0, offsetY: 0, zoom: 1 });
+
+export const isDefaultTransform = (t: ClipTransform): boolean =>
+  t.offsetX === 0 && t.offsetY === 0 && t.zoom === 1;
 
 /** One marked segment that will appear in the final trailer. */
 export type ClipMarker = {
@@ -53,6 +76,8 @@ export type ClipMarker = {
   lengthSec: number;
   /** Position in the final trailer. Assigned in click order; mutable via drag. */
   order: number;
+  /** Framing (pan/zoom) within the trailer canvas. */
+  transform: ClipTransform;
 };
 
 export type IntroAnimation = "fade" | "slideLeft" | "slideUp" | "scale";
@@ -143,7 +168,6 @@ export type AspectRatio = (typeof ASPECT_RATIOS)[number]["id"];
 export const FIT_MODES = [
   { id: "cover", label: "Cover — crop to fill" },
   { id: "contain", label: "Contain — fit, letterbox" },
-  { id: "stretch", label: "Stretch — fill, distort" },
 ] as const;
 export type FitMode = (typeof FIT_MODES)[number]["id"];
 

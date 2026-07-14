@@ -2,7 +2,7 @@
  * Turns markers into the ordered clip list the Remotion preview (and, later,
  * the FFmpeg export) consume. Frame values are computed against the preview fps.
  */
-import type { Asset, ClipMarker } from "./model";
+import { type Asset, type ClipMarker, type ClipTransform, defaultTransform } from "./model";
 import { orderedMarkers } from "./timeline";
 
 export type TrailerClip = {
@@ -16,6 +16,8 @@ export type TrailerClip = {
   durationInFrames: number;
   /** Cache key for this clip's preview proxy. */
   proxyKey: string;
+  /** Framing (pan/zoom) within the trailer canvas. */
+  transform: ClipTransform;
 };
 
 export function buildTrailerClips(
@@ -30,6 +32,7 @@ export function buildTrailerClips(
     trimBeforeInFrames: Math.round(m.startSec * fps),
     durationInFrames: Math.max(1, Math.round(m.lengthSec * fps)),
     proxyKey: proxyKey(m),
+    transform: m.transform ?? defaultTransform(),
   }));
 }
 

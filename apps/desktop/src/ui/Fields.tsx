@@ -11,6 +11,7 @@ export function LabeledSlider({
   step,
   onChange,
   format,
+  disabled,
 }: {
   label: string;
   value: number;
@@ -19,6 +20,7 @@ export function LabeledSlider({
   step: number;
   onChange: (v: number) => void;
   format?: (v: number) => string;
+  disabled?: boolean;
 }) {
   return (
     <Slider
@@ -27,6 +29,7 @@ export function LabeledSlider({
       minValue={min}
       maxValue={max}
       step={step}
+      isDisabled={disabled}
       onChange={(v) => onChange(Array.isArray(v) ? v[0]! : v)}
     >
       <div className="flex items-center justify-between">

@@ -16,6 +16,7 @@ import {
   watermarkActive,
 } from "./model";
 import { orderedMarkers } from "./timeline";
+import { type ClipCropSpec, clipCropSpec } from "./transform";
 
 type PresetRow = { height: number; crf: number; ffPreset: string; audioKbps: number };
 
@@ -61,7 +62,7 @@ export function resolveEncode(opts: ExportOpts, settings: Settings, fps = 30): R
   };
 }
 
-export type ExportPlanClip = {
+export type ExportPlanClip = ClipCropSpec & {
   path: string;
   startSec: number;
   lengthSec: number;
@@ -108,6 +109,7 @@ export const PREVIEW_SHORT_SIDE = 1080;
 
 export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): ExportPlan {
   const assetsById = byId(project.assets);
+  const enc = resolveEncode(opts, project.settings, fps);
   const clips: ExportPlanClip[] = orderedMarkers(project.markers).map((m) => {
     const a = assetsById[m.assetId];
     return {
@@ -115,10 +117,16 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
       startSec: m.startSec,
       lengthSec: m.lengthSec,
       hasAudio: a?.hasAudio ?? false,
+      ...clipCropSpec(
+        a?.width ?? 0,
+        a?.height ?? 0,
+        enc.width,
+        enc.height,
+        project.settings.fitMode,
+        m.transform,
+      ),
     };
   });
-
-  const enc = resolveEncode(opts, project.settings, fps);
   // Text sizes/offsets are authored against a 1080 short side; scale to the export canvas.
   const s = Math.min(enc.width, enc.height) / PREVIEW_SHORT_SIDE;
   const px = (v: number) => Math.round(v * s);

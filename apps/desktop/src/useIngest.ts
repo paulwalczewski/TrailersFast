@@ -6,6 +6,33 @@ import { engine, isTauri } from "./engine";
 
 const FILMSTRIP_FRAMES = 8;
 
+/**
+ * Cap concurrent thumbnail jobs so dropping many files doesn't spawn dozens of
+ * FFmpeg processes at once (each extraction is its own process). Probes are not
+ * gated — they're near-instant and fill in duration/dimensions right away.
+ */
+const MAX_CONCURRENT_THUMBNAIL_JOBS = 3;
+let activeThumbnailJobs = 0;
+const thumbnailQueue: Array<() => void> = [];
+
+function acquireThumbnailSlot(): Promise<void> {
+  if (activeThumbnailJobs < MAX_CONCURRENT_THUMBNAIL_JOBS) {
+    activeThumbnailJobs++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) =>
+    thumbnailQueue.push(() => {
+      activeThumbnailJobs++;
+      resolve();
+    }),
+  );
+}
+
+function releaseThumbnailSlot(): void {
+  activeThumbnailJobs--;
+  thumbnailQueue.shift()?.();
+}
+
 export function isVideoPath(p: string): boolean {
   const ext = p.split(".").pop()?.toLowerCase() ?? "";
   return VIDEO_EXTENSIONS.includes(ext);
@@ -23,27 +50,45 @@ export function useIngest(): (files: FileRef[]) => void {
   const addPlaceholder = useTrailerStore((s) => s.addPlaceholder);
   const setAssetProbed = useTrailerStore((s) => s.setAssetProbed);
   const setAssetMedia = useTrailerStore((s) => s.setAssetMedia);
+  const removeAsset = useTrailerStore((s) => s.removeAsset);
 
   return useCallback(
     (files: FileRef[]) => {
       for (const f of files) {
         const id = addPlaceholder(f.path, f.fileName);
         void (async () => {
+          let info;
           try {
-            const info = await engine.probe(f);
+            info = await engine.probe(f);
             setAssetProbed(id, info);
-            const times = Array.from({ length: FILMSTRIP_FRAMES }, (_, i) =>
-              Math.max(0, (info.durationSec * (i + 0.5)) / FILMSTRIP_FRAMES),
-            );
-            const urls = await engine.thumbnails(f, times);
-            setAssetMedia(id, { filmstripUrls: urls, posterUrl: urls[0] });
           } catch (err) {
             console.error(`Failed to import ${f.fileName}`, err);
+            removeAsset(id);
+            return;
+          }
+          // Thumbnails are cosmetic — a failure logs but keeps the asset.
+          const times = Array.from({ length: FILMSTRIP_FRAMES }, (_, i) =>
+            Math.max(0, (info.durationSec * (i + 0.5)) / FILMSTRIP_FRAMES),
+          );
+          await acquireThumbnailSlot();
+          try {
+            // Poster first, so the card gets an image as soon as possible…
+            const [poster] = await engine.thumbnails(f, times.slice(0, 1));
+            if (poster) setAssetMedia(id, { posterUrl: poster });
+            // …then the rest of the filmstrip.
+            const rest = await engine.thumbnails(f, times.slice(1));
+            const urls = poster ? [poster, ...rest] : rest;
+            setAssetMedia(id, { filmstripUrls: urls, posterUrl: urls[0], mediaLoading: false });
+          } catch (err) {
+            console.error(`Thumbnails failed for ${f.fileName}`, err);
+            setAssetMedia(id, { mediaLoading: false });
+          } finally {
+            releaseThumbnailSlot();
           }
         })();
       }
     },
-    [addPlaceholder, setAssetProbed, setAssetMedia],
+    [addPlaceholder, setAssetProbed, setAssetMedia, removeAsset],
   );
 }
 

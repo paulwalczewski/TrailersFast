@@ -2,15 +2,20 @@ import { ExportBar } from "./panels/ExportBar";
 import { Logo } from "./panels/Logo";
 import { OnboardingOverlay } from "./panels/OnboardingOverlay";
 import { Sidebar } from "./panels/Sidebar";
+import { UndoRedoButtons } from "./panels/UndoRedoButtons";
 import { WorkArea } from "./panels/WorkArea";
 
 export function App() {
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-separator px-4">
-        <div className="flex items-center gap-1">
-          <Logo />
-          <span className="font-semibold tracking-tight">Trailers Fast</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Logo />
+            <span className="font-semibold tracking-tight">Trailers Fast</span>
+          </div>
+          <div className="h-5 w-px bg-separator" />
+          <UndoRedoButtons />
         </div>
         <ExportBar />
       </header>
