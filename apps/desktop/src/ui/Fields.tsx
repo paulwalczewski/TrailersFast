@@ -34,7 +34,7 @@ export function LabeledSlider({
     >
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
-        <span className="text-sm font-medium tabular-nums text-accent">
+        <span className="text-sm font-medium tabular-nums text-muted">
           {(format ?? String)(value)}
         </span>
       </div>

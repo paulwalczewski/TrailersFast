@@ -26,7 +26,7 @@ type AssetInput = Omit<
 >;
 type AssetProbe = Pick<Asset, "durationSec" | "width" | "height" | "fps" | "hasAudio">;
 /** The `Project` fields tracked for undo/redo — the single source of truth. */
-const HISTORY_KEYS = ["assets", "markers", "intro", "watermark", "settings"] as const;
+const HISTORY_KEYS = ["assets", "markers", "intro", "outro", "watermark", "settings"] as const;
 /** The editable document tracked for undo/redo. */
 type HistoryDoc = Pick<Project, (typeof HISTORY_KEYS)[number]>;
 
@@ -59,8 +59,9 @@ export type TrailerStore = Project & {
   /** Adjust a clip's framing (pan/zoom) within the trailer canvas. */
   setMarkerTransform: (markerId: string, patch: Partial<ClipTransform>) => void;
 
-  // Intro & watermark
+  // Intro, outro & watermark
   updateIntro: (patch: Partial<IntroConfig>) => void;
+  updateOutro: (patch: Partial<IntroConfig>) => void;
   updateWatermark: (patch: Partial<WatermarkConfig>) => void;
 
   // Preview proxies (key -> proxy file path), see core `proxyKey`.
@@ -269,6 +270,8 @@ export const useTrailerStore = create<TrailerStore>()(
 
   updateIntro: (patch) => set((s) => ({ intro: { ...s.intro, ...patch } })),
 
+  updateOutro: (patch) => set((s) => ({ outro: { ...s.outro, ...patch } })),
+
   updateWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
     }),
     {
@@ -278,6 +281,7 @@ export const useTrailerStore = create<TrailerStore>()(
       partialize: (s) => ({
         settings: s.settings,
         intro: s.intro,
+        outro: s.outro,
         watermark: s.watermark,
         lastExportPath: s.lastExportPath,
       }),
@@ -293,6 +297,7 @@ export const useTrailerStore = create<TrailerStore>()(
           ...current,
           settings,
           intro: { ...current.intro, ...(p.intro ?? {}) },
+          outro: { ...current.outro, ...(p.outro ?? {}) },
           watermark: { ...current.watermark, ...(p.watermark ?? {}) },
           lastExportPath: p.lastExportPath ?? current.lastExportPath,
         };
@@ -321,7 +326,11 @@ useTrailerStore.subscribe((state, prev) => {
   }
   const now = Date.now();
   const coalescible =
-    kind === "intro" || kind === "watermark" || kind === "settings" || kind === "markerTransform";
+    kind === "intro" ||
+    kind === "outro" ||
+    kind === "watermark" ||
+    kind === "settings" ||
+    kind === "markerTransform";
   const coalesce = coalescible && kind === lastKind && now - lastRecordAt < 700 && state.future.length === 0;
   lastRecordAt = now;
   lastKind = kind;

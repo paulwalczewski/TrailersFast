@@ -99,6 +99,9 @@ export type ExportPlan = ResolvedEncode & {
   intro: ExportPlanIntro | null;
   /** Base64 PNG of the intro (rendered by the UI, supports emoji); overlaid by FFmpeg. */
   introImage: string | null;
+  /** Title card over the last seconds of the trailer — same mechanics as the intro. */
+  outro: ExportPlanIntro | null;
+  outroImage: string | null;
   watermark: ExportPlanWatermark | null;
   flipHorizontal: boolean;
   fitMode: FitMode;
@@ -132,25 +135,27 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
   const px = (v: number) => Math.round(v * s);
 
   const clipTotal = clips.reduce((n, c) => n + c.lengthSec, 0);
-  const intro: ExportPlanIntro | null =
-    introActive(project.intro) && clipTotal > 0
+  const titleCard = (cfg: Project["intro"]): ExportPlanIntro | null =>
+    introActive(cfg) && clipTotal > 0
       ? {
-          text: project.intro.text,
-          description: project.intro.description,
-          fontFamily: project.intro.fontFamily,
-          headingWeight: project.intro.headingWeight,
-          color: project.intro.color,
-          align: project.intro.align,
-          vAlign: project.intro.vAlign,
-          animation: project.intro.animation,
-          durationSec: Math.min(project.intro.durationSec, clipTotal),
-          fontSizePx: px(project.intro.fontSizePx),
-          shadowEnabled: project.intro.shadowEnabled,
-          shadowIntensity: project.intro.shadowIntensity,
-          shadowX: px(project.intro.shadowX),
-          shadowY: px(project.intro.shadowY),
+          text: cfg.text,
+          description: cfg.description,
+          fontFamily: cfg.fontFamily,
+          headingWeight: cfg.headingWeight,
+          color: cfg.color,
+          align: cfg.align,
+          vAlign: cfg.vAlign,
+          animation: cfg.animation,
+          durationSec: Math.min(cfg.durationSec, clipTotal),
+          fontSizePx: px(cfg.fontSizePx),
+          shadowEnabled: cfg.shadowEnabled,
+          shadowIntensity: cfg.shadowIntensity,
+          shadowX: px(cfg.shadowX),
+          shadowY: px(cfg.shadowY),
         }
       : null;
+  const intro = titleCard(project.intro);
+  const outro = titleCard(project.outro);
 
   const wm = project.watermark;
   const watermark: ExportPlanWatermark | null = watermarkActive(wm)
@@ -167,6 +172,8 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
     clips,
     intro,
     introImage: null, // filled in by the UI (canvas render) before export
+    outro,
+    outroImage: null,
     watermark,
     flipHorizontal: project.settings.flipHorizontal,
     fitMode: project.settings.fitMode,

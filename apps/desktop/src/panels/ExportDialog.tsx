@@ -1,16 +1,9 @@
 import { Button } from "@heroui/react";
-import {
-  EXPORT_PRESETS,
-  type ExportOpts,
-  type ExportPreset,
-  type Project,
-  buildExportPlan,
-} from "@trailerfast/core";
+import { EXPORT_PRESETS, type ExportPreset } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import type { Progress } from "@trailerfast/video-engine";
 import { useState } from "react";
 import { engine, isTauri } from "../engine";
-import { renderIntroImage } from "../renderIntroImage";
+import { performExport } from "../exportTrailer";
 import { ModalShell } from "../ui/ModalShell";
 
 type Phase = "idle" | "exporting" | "done" | "error";
@@ -21,11 +14,6 @@ const CODECS = [
 ] as const;
 
 export function ExportDialog({ onClose }: { onClose: () => void }) {
-  const assets = useTrailerStore((s) => s.assets);
-  const markers = useTrailerStore((s) => s.markers);
-  const intro = useTrailerStore((s) => s.intro);
-  const watermark = useTrailerStore((s) => s.watermark);
-  const settings = useTrailerStore((s) => s.settings);
   const lastExportPath = useTrailerStore((s) => s.lastExportPath);
   const setLastExportPath = useTrailerStore((s) => s.setLastExportPath);
 
@@ -49,17 +37,11 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
     if (!outPath) return;
     setLastExportPath(outPath);
 
-    const project: Project = { assets, markers, intro, watermark, settings };
-    const opts: ExportOpts = { preset, codec, container: "mp4" };
-    const plan = buildExportPlan(project, opts);
-    // Render the intro (emoji + fonts) to an image the way the preview does.
-    if (plan.intro) plan.introImage = renderIntroImage(intro, plan.width, plan.height);
-
     setPhase("exporting");
     setFrac(0);
     setError("");
     try {
-      const w = await engine.export(plan, outPath, (p: Progress) => setFrac(p.fraction));
+      const w = await performExport(outPath, { preset, codec }, setFrac);
       setSavedPath(outPath);
       setWarning(w);
       setPhase("done");

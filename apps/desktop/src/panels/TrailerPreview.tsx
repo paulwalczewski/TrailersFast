@@ -1,5 +1,6 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import {
+  type IntroConfig,
   buildTrailerClips,
   byId,
   canvasFor,
@@ -21,10 +22,32 @@ type Props = {
   maxHeight?: string;
 };
 
+/** Map an intro/outro config to composition props, capped to the trailer length. */
+function titleCardProps(cfg: IntroConfig, maxFrames: number): IntroProps | null {
+  if (!introActive(cfg)) return null;
+  return {
+    text: cfg.text,
+    description: cfg.description,
+    fontFamily: cfg.fontFamily,
+    headingWeight: cfg.headingWeight,
+    fontSizePx: cfg.fontSizePx,
+    color: cfg.color,
+    align: cfg.align,
+    vAlign: cfg.vAlign,
+    animation: cfg.animation,
+    durationInFrames: Math.min(Math.round(cfg.durationSec * PREVIEW_FPS), maxFrames),
+    shadowEnabled: cfg.shadowEnabled,
+    shadowIntensity: cfg.shadowIntensity,
+    shadowX: cfg.shadowX,
+    shadowY: cfg.shadowY,
+  };
+}
+
 export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props) {
   const markers = useTrailerStore((s) => s.markers);
   const assets = useTrailerStore((s) => s.assets);
   const intro = useTrailerStore((s) => s.intro);
+  const outro = useTrailerStore((s) => s.outro);
   const watermark = useTrailerStore((s) => s.watermark);
   const proxies = useTrailerStore((s) => s.proxies);
   const settings = useTrailerStore((s) => s.settings);
@@ -60,26 +83,8 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
 
   const durationInFrames = Math.max(1, totalFrames(clips));
 
-  const introProps = useMemo<IntroProps | null>(() => {
-    if (!introActive(intro)) return null;
-    const introFrames = Math.min(Math.round(intro.durationSec * PREVIEW_FPS), durationInFrames);
-    return {
-      text: intro.text,
-      description: intro.description,
-      fontFamily: intro.fontFamily,
-      headingWeight: intro.headingWeight,
-      fontSizePx: intro.fontSizePx,
-      color: intro.color,
-      align: intro.align,
-      vAlign: intro.vAlign,
-      animation: intro.animation,
-      durationInFrames: introFrames,
-      shadowEnabled: intro.shadowEnabled,
-      shadowIntensity: intro.shadowIntensity,
-      shadowX: intro.shadowX,
-      shadowY: intro.shadowY,
-    };
-  }, [intro, durationInFrames]);
+  const introProps = useMemo(() => titleCardProps(intro, durationInFrames), [intro, durationInFrames]);
+  const outroProps = useMemo(() => titleCardProps(outro, durationInFrames), [outro, durationInFrames]);
 
   const watermarkProps = useMemo<WatermarkProps | null>(() => {
     if (!watermarkActive(watermark)) return null;
@@ -121,13 +126,22 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
   return (
     // ring, not border: a border shrinks the content box and skews its aspect
     // ratio, making the Player letterbox a ~1px black sliver.
-    <div className="mx-auto overflow-hidden rounded-xl bg-black ring-1 ring-separator" style={boxStyle}>
-      <Player
+    <div
+      className="relative mx-auto overflow-hidden rounded-xl bg-black ring-1 ring-separator"
+      style={boxStyle}
+    >
+      {/* Absolute layer: a static child's `height:100%` resolves against the
+          aspect-ratio height BEFORE the min() width cap (WebKit), ending up
+          taller than the box and shifting the Player down ~1px (black bar).
+          Absolute positioning resolves against the real laid-out box. */}
+      <div className="absolute inset-0">
+        <Player
         ref={playerRef}
         component={TrailerComposition}
         inputProps={{
           clips,
           intro: introProps,
+          outro: outroProps,
           watermark: watermarkProps,
           flipHorizontal: settings.flipHorizontal,
           fitMode: settings.fitMode,
@@ -141,7 +155,8 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
         clickToPlay
         spaceKeyToPlayOrPause={false}
         loop
-      />
+        />
+      </div>
     </div>
   );
 }
