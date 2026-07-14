@@ -11,22 +11,21 @@ function ratioIcon(w: number, h: number): { width: number; height: number } {
     : { width: Math.round((RATIO_ICON_MAX * w) / h), height: RATIO_ICON_MAX };
 }
 
-/** A source (circle) shown inside a frame to convey each fit mode. */
+/**
+ * A video (translucent rectangle) laid over a dashed canvas frame: wider than
+ * the canvas for cover (cropped sides), letterboxed inside it for contain.
+ */
 function FitIcon({ mode }: { mode: FitMode }) {
   return (
-    <span className="grid h-8 place-items-center">
-      <span className="flex h-7 w-10 items-center justify-center overflow-hidden rounded-[3px] border-2 border-current">
-        {mode === "contain" ? (
-          // fits inside → letterbox around it
-          <span className="size-4 rounded-full bg-current" />
-        ) : mode === "cover" ? (
-          // scaled to fill → cropped top/bottom
-          <span className="size-10 shrink-0 rounded-full bg-current" />
-        ) : (
-          // stretched to fill → distorted ellipse
-          <span className="h-full w-full rounded-full bg-current" />
-        )}
-      </span>
+    <span className="relative grid h-8 w-full place-items-center">
+      {/* the video */}
+      <span
+        className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-current/45 ${
+          mode === "cover" ? "h-6 w-11" : "h-4 w-9"
+        }`}
+      />
+      {/* the canvas */}
+      <span className="absolute left-1/2 top-1/2 h-6 w-9 -translate-x-1/2 -translate-y-1/2 border border-dashed border-current" />
     </span>
   );
 }
@@ -95,7 +94,7 @@ export function SettingsTab() {
 
       <div className="flex flex-col gap-1.5">
         <Label>Fit</Label>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {FIT_MODES.map((f) => {
             const active = settings.fitMode === f.id;
             return (

@@ -3,11 +3,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import {
   type Asset,
   type ClipMarker,
+  type ClipTransform,
+  FIT_MODES,
   type IntroConfig,
   type Project,
   type Settings,
   type WatermarkConfig,
   centeredClip,
+  defaultTransform,
   emptyProject,
   nextOrder,
   orderedMarkers,
@@ -16,8 +19,15 @@ import {
 let idSeq = 0;
 const uid = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${idSeq++}`;
 
-type AssetInput = Omit<Asset, "id" | "selected" | "filmstripUrls" | "posterUrl" | "loading">;
+type AssetInput = Omit<
+  Asset,
+  "id" | "selected" | "filmstripUrls" | "posterUrl" | "loading" | "mediaLoading"
+>;
 type AssetProbe = Pick<Asset, "durationSec" | "width" | "height" | "fps" | "hasAudio">;
+/** The `Project` fields tracked for undo/redo — the single source of truth. */
+const HISTORY_KEYS = ["assets", "markers", "intro", "watermark", "settings"] as const;
+/** The editable document tracked for undo/redo. */
+type HistoryDoc = Pick<Project, (typeof HISTORY_KEYS)[number]>;
 
 export type TrailerStore = Project & {
   // Assets
@@ -26,7 +36,10 @@ export type TrailerStore = Project & {
   addPlaceholder: (path: string, fileName: string) => string;
   /** Fill in probed metadata and clear the loading state. */
   setAssetProbed: (assetId: string, probe: AssetProbe) => void;
-  setAssetMedia: (assetId: string, media: { posterUrl?: string; filmstripUrls?: string[] }) => void;
+  setAssetMedia: (
+    assetId: string,
+    media: { posterUrl?: string; filmstripUrls?: string[]; mediaLoading?: boolean },
+  ) => void;
   toggleAssetSelected: (assetId: string) => void;
   removeAsset: (assetId: string) => void;
 
@@ -40,6 +53,10 @@ export type TrailerStore = Project & {
   removeMarker: (markerId: string) => void;
   /** Reorder trailer clips (drag-and-drop): move `markerId` to `toIndex`. */
   reorderMarker: (markerId: string, toIndex: number) => void;
+  /** Set a clip's in-point + length (edge-resize on the trailer timeline). */
+  resizeMarker: (markerId: string, startSec: number, lengthSec: number) => void;
+  /** Adjust a clip's framing (pan/zoom) within the trailer canvas. */
+  setMarkerTransform: (markerId: string, patch: Partial<ClipTransform>) => void;
 
   // Intro & watermark
   updateIntro: (patch: Partial<IntroConfig>) => void;
@@ -52,7 +69,37 @@ export type TrailerStore = Project & {
   /** Last export destination, remembered across exports/restarts. */
   lastExportPath: string;
   setLastExportPath: (path: string) => void;
+
+  // Undo/redo history (session-only, populated by a store subscription below).
+  past: HistoryDoc[];
+  future: HistoryDoc[];
+  undo: () => void;
+  redo: () => void;
+  /** Open a single undo step, then coalesce every edit until endHistoryBatch (e.g. a resize drag). */
+  beginHistoryBatch: () => void;
+  endHistoryBatch: () => void;
 };
+
+const HISTORY_LIMIT = 100;
+/** Set while undo/redo apply a snapshot, so the recorder ignores those changes. */
+let timeTraveling = false;
+/** Set between begin/endHistoryBatch so a continuous gesture records only one step. */
+let suppressHistory = false;
+
+const docOf = (s: HistoryDoc): HistoryDoc =>
+  Object.fromEntries(HISTORY_KEYS.map((k) => [k, s[k]])) as HistoryDoc;
+/** Structural asset signature — ignores async fields (poster/filmstrip/probe/loading). */
+const assetSig = (assets: Asset[]) => assets.map((a) => `${a.id}:${a.selected ? 1 : 0}`).join(",");
+/** Which tracked fields differ between two docs (assets compared structurally). */
+const changedFields = (a: HistoryDoc, b: HistoryDoc): string[] =>
+  HISTORY_KEYS.filter((k) =>
+    k === "assets" ? assetSig(a.assets) !== assetSig(b.assets) : a[k] !== b[k],
+  );
+/** Append `snapshot` to the undo stack (bounded) and drop the redo stack. */
+const pushPast = (s: { past: HistoryDoc[] }, snapshot: HistoryDoc) => ({
+  past: [...s.past, snapshot].slice(-HISTORY_LIMIT),
+  future: [] as HistoryDoc[],
+});
 
 export const useTrailerStore = create<TrailerStore>()(
   persist(
@@ -64,6 +111,36 @@ export const useTrailerStore = create<TrailerStore>()(
   setProxy: (key, path) => set((s) => ({ proxies: { ...s.proxies, [key]: path } })),
   setLastExportPath: (path) => set({ lastExportPath: path }),
 
+  past: [],
+  future: [],
+  undo: () => {
+    timeTraveling = true;
+    set((s) => {
+      if (!s.past.length) return {};
+      const prev = s.past[s.past.length - 1]!;
+      return { ...prev, past: s.past.slice(0, -1), future: [...s.future, docOf(s)] };
+    });
+    timeTraveling = false;
+  },
+  redo: () => {
+    timeTraveling = true;
+    set((s) => {
+      if (!s.future.length) return {};
+      const next = s.future[s.future.length - 1]!;
+      return { ...next, past: [...s.past, docOf(s)], future: s.future.slice(0, -1) };
+    });
+    timeTraveling = false;
+  },
+  beginHistoryBatch: () => {
+    if (suppressHistory) return;
+    // Snapshot the pre-gesture doc once; edits during the batch aren't recorded.
+    set((s) => pushPast(s, docOf(s)));
+    suppressHistory = true;
+  },
+  endHistoryBatch: () => {
+    suppressHistory = false;
+  },
+
   addAssets: (assets) =>
     set((s) => ({
       assets: [
@@ -74,6 +151,7 @@ export const useTrailerStore = create<TrailerStore>()(
           selected: true,
           filmstripUrls: [],
           loading: false,
+          mediaLoading: false,
         })),
       ],
     })),
@@ -95,6 +173,7 @@ export const useTrailerStore = create<TrailerStore>()(
           filmstripUrls: [],
           selected: true,
           loading: true,
+          mediaLoading: true,
         },
       ],
     }));
@@ -144,6 +223,7 @@ export const useTrailerStore = create<TrailerStore>()(
         startSec,
         lengthSec,
         order: nextOrder(s.markers),
+        transform: defaultTransform(),
       };
       return { markers: [...s.markers, marker] };
     }),
@@ -164,6 +244,18 @@ export const useTrailerStore = create<TrailerStore>()(
       return { markers: ordered.map((m, i) => ({ ...m, order: i })) };
     }),
 
+  resizeMarker: (markerId, startSec, lengthSec) =>
+    set((s) => ({
+      markers: s.markers.map((m) => (m.id === markerId ? { ...m, startSec, lengthSec } : m)),
+    })),
+
+  setMarkerTransform: (markerId, patch) =>
+    set((s) => ({
+      markers: s.markers.map((m) =>
+        m.id === markerId ? { ...m, transform: { ...m.transform, ...patch } } : m,
+      ),
+    })),
+
   updateIntro: (patch) => set((s) => ({ intro: { ...s.intro, ...patch } })),
 
   updateWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
@@ -181,9 +273,14 @@ export const useTrailerStore = create<TrailerStore>()(
       // Deep-merge so fields added in newer versions keep their defaults.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<TrailerStore>;
+        const settings = { ...current.settings, ...(p.settings ?? {}) };
+        // Drop persisted values that are no longer valid (e.g. removed "stretch").
+        if (!FIT_MODES.some((f) => f.id === settings.fitMode)) {
+          settings.fitMode = current.settings.fitMode;
+        }
         return {
           ...current,
-          settings: { ...current.settings, ...(p.settings ?? {}) },
+          settings,
           intro: { ...current.intro, ...(p.intro ?? {}) },
           watermark: { ...current.watermark, ...(p.watermark ?? {}) },
           lastExportPath: p.lastExportPath ?? current.lastExportPath,
@@ -192,3 +289,31 @@ export const useTrailerStore = create<TrailerStore>()(
     },
   ),
 );
+
+// Record undo history whenever the tracked document changes. Async media updates
+// (poster/filmstrip/probe) don't change the signature, so they're ignored; undo/redo
+// set `timeTraveling`, so they aren't recorded; rapid intro/watermark/settings edits
+// (typing, dragging a slider) coalesce into one step.
+let lastRecordAt = 0;
+let lastKind = "";
+/** Marker signature ignoring per-clip transforms (pan/zoom slider drags). */
+const markerSig = (markers: ClipMarker[]) =>
+  markers.map((m) => `${m.id}:${m.order}:${m.startSec}:${m.lengthSec}`).join(",");
+useTrailerStore.subscribe((state, prev) => {
+  if (timeTraveling || suppressHistory) return;
+  const fields = changedFields(state, prev);
+  if (fields.length === 0) return;
+  let kind = fields.length === 1 ? fields[0]! : "mixed";
+  // A markers change that only touched transforms is a slider/drag gesture.
+  if (kind === "markers" && markerSig(state.markers) === markerSig(prev.markers)) {
+    kind = "markerTransform";
+  }
+  const now = Date.now();
+  const coalescible =
+    kind === "intro" || kind === "watermark" || kind === "settings" || kind === "markerTransform";
+  const coalesce = coalescible && kind === lastKind && now - lastRecordAt < 700 && state.future.length === 0;
+  lastRecordAt = now;
+  lastKind = kind;
+  if (coalesce) return;
+  useTrailerStore.setState((s) => pushPast(s, docOf(prev)));
+});

@@ -15,6 +15,14 @@ pub struct ExportClip {
     pub start_sec: f64,
     pub length_sec: f64,
     pub has_audio: bool,
+    /// Per-clip framing, precomputed by the TS plan builder (mirrors the
+    /// preview's `clipRenderBox`): scale → crop window → pad to canvas.
+    pub scale_w: u32,
+    pub scale_h: u32,
+    pub crop_w: u32,
+    pub crop_h: u32,
+    pub crop_x: u32,
+    pub crop_y: u32,
 }
 
 #[derive(Deserialize)]
@@ -381,20 +389,16 @@ fn build_filter_complex(
     let (w, h, fps) = (plan.width, plan.height, plan.fps);
     let mut fc = String::new();
 
-    // Fit the source into the canvas per the chosen mode.
-    let fit = match plan.fit_mode.as_str() {
-        "cover" => format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"),
-        "stretch" => format!("scale={w}:{h}"),
-        // contain (default): fit + letterbox pad
-        _ => format!(
-            "scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"
-        ),
-    };
-    let flip = if plan.flip_horizontal { ",hflip" } else { "" };
-
-    for i in 0..n {
+    // Per-clip framing from the plan: flip FIRST (so pan coordinates match the
+    // preview, which flips the positioned box in place), then scale → crop the
+    // pan/zoom window → pad to the canvas (a no-op except for letterboxing).
+    let flip = if plan.flip_horizontal { "hflip," } else { "" };
+    for (i, c) in plan.clips.iter().enumerate() {
+        let (sw, sh) = (c.scale_w.max(2), c.scale_h.max(2));
+        let (cw, ch) = (c.crop_w.min(sw), c.crop_h.min(sh));
+        let (cx, cy) = (c.crop_x.min(sw - cw), c.crop_y.min(sh - ch));
         fc.push_str(&format!(
-            "[{i}:v]{fit},setsar=1,fps={fps},format=yuv420p{flip}[v{i}];"
+            "[{i}:v]{flip}scale={sw}:{sh},crop={cw}:{ch}:{cx}:{cy},pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps},format=yuv420p[v{i}];"
         ));
     }
     for i in 0..n {

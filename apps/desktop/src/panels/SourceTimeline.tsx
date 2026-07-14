@@ -117,6 +117,10 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
                     <img key={i} src={u} alt="" className="h-full min-w-0 flex-1 object-cover" />
                   ))}
                 </div>
+              ) : p.asset.mediaLoading ? (
+                <div className="pointer-events-none grid size-full animate-pulse place-items-center bg-surface-tertiary">
+                  <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                </div>
               ) : (
                 <div className="pointer-events-none grid size-full place-items-center text-xs text-muted">
                   …

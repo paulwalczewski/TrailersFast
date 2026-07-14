@@ -31,10 +31,25 @@ fn run_to_completion(mut cmd: FfmpegCommand) -> Result<(), String> {
     Ok(())
 }
 
+/// Run a blocking media task on the FFmpeg thread pool. Sync commands run on
+/// the main thread in Tauri, so anything that spawns FFmpeg must hop off it or
+/// the whole window (rendering + input) freezes for the duration.
+async fn off_main_thread<T: Send + 'static>(
+    task: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Probe a media file by parsing `ffmpeg -i <file>` output events. Uses ffmpeg
 /// (always present) rather than ffprobe (not downloaded on macOS).
 #[tauri::command]
-fn probe_media(path: String) -> Result<MediaInfo, String> {
+async fn probe_media(path: String) -> Result<MediaInfo, String> {
+    off_main_thread(move || probe_media_blocking(&path)).await
+}
+
+fn probe_media_blocking(path: &str) -> Result<MediaInfo, String> {
     ensure_ffmpeg()?;
 
     let mut info = MediaInfo {
@@ -44,10 +59,11 @@ fn probe_media(path: String) -> Result<MediaInfo, String> {
         fps: 0.0,
         has_audio: false,
     };
+    let mut rotated_90 = false;
 
     let iter = FfmpegCommand::new()
         .arg("-hide_banner")
-        .input(&path)
+        .input(path)
         .spawn()
         .map_err(|e| e.to_string())?
         .iter()
@@ -66,24 +82,50 @@ fn probe_media(path: String) -> Result<MediaInfo, String> {
                 }
             }
             FfmpegEvent::ParsedDuration(d) => info.duration_sec = d.duration,
+            // Rotation side data (e.g. phone footage): "displaymatrix: rotation
+            // of -90.00 degrees". Players and FFmpeg auto-rotate on decode, so
+            // report DISPLAY dimensions — swap w/h on odd multiples of 90°.
+            FfmpegEvent::Log(_, msg) => {
+                if let Some(rest) = msg.split("rotation of ").nth(1) {
+                    let deg: f64 = rest
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0.0);
+                    if ((deg / 90.0).round() as i64).rem_euclid(2) == 1 {
+                        rotated_90 = true;
+                    }
+                }
+            }
             _ => {}
         }
     }
 
+    if rotated_90 {
+        std::mem::swap(&mut info.width, &mut info.height);
+    }
     Ok(info)
 }
+
+/// Monotonic id so concurrent thumbnail jobs never share a temp file name.
+static THUMB_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Extract one frame at each timestamp, scaled small, returned as base64 JPEG
 /// data URIs the webview can render directly (no asset-protocol config needed).
 #[tauri::command]
-fn generate_thumbnails(path: String, at_secs: Vec<f64>) -> Result<Vec<String>, String> {
+async fn generate_thumbnails(path: String, at_secs: Vec<f64>) -> Result<Vec<String>, String> {
+    off_main_thread(move || generate_thumbnails_blocking(&path, &at_secs)).await
+}
+
+fn generate_thumbnails_blocking(path: &str, at_secs: &[f64]) -> Result<Vec<String>, String> {
     ensure_ffmpeg()?;
     let tmp = std::env::temp_dir();
     let pid = std::process::id();
+    let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut out = Vec::with_capacity(at_secs.len());
 
     for (i, t) in at_secs.iter().enumerate() {
-        let outfile = tmp.join(format!("tf_thumb_{pid}_{i}.jpg"));
+        let outfile = tmp.join(format!("tf_thumb_{pid}_{job}_{i}.jpg"));
         let outstr = outfile.to_string_lossy().to_string();
 
         // -ss before -i = fast keyframe seek; single frame; scaled to 160px wide.
@@ -91,7 +133,7 @@ fn generate_thumbnails(path: String, at_secs: Vec<f64>) -> Result<Vec<String>, S
         cmd.arg("-y")
             .arg("-ss")
             .arg(format!("{t}"))
-            .input(&path)
+            .input(path)
             .arg("-frames:v")
             .arg("1")
             .arg("-vf")
@@ -114,7 +156,11 @@ fn generate_thumbnails(path: String, at_secs: Vec<f64>) -> Result<Vec<String>, S
 /// preview plays it linearly with no seeking → smooth playback. Cached by a hash
 /// of (path, start, length); returns the proxy file path.
 #[tauri::command]
-fn generate_proxy(path: String, start_sec: f64, length_sec: f64) -> Result<String, String> {
+async fn generate_proxy(path: String, start_sec: f64, length_sec: f64) -> Result<String, String> {
+    off_main_thread(move || generate_proxy_blocking(&path, start_sec, length_sec)).await
+}
+
+fn generate_proxy_blocking(path: &str, start_sec: f64, length_sec: f64) -> Result<String, String> {
     use std::hash::{Hash, Hasher};
     ensure_ffmpeg()?;
 
@@ -133,7 +179,7 @@ fn generate_proxy(path: String, start_sec: f64, length_sec: f64) -> Result<Strin
     cmd.arg("-y")
         .arg("-ss")
         .arg(format!("{start_sec:.3}"))
-        .input(&path)
+        .input(path)
         .arg("-t")
         .arg(format!("{length_sec:.3}"))
         .arg("-vf")
@@ -196,6 +242,47 @@ async fn export_trailer(
     .map_err(|e| e.to_string())??;
 
     Ok(warning)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phone footage stores rotation as display-matrix side data; players and
+    /// FFmpeg auto-rotate, so the probe must report display dimensions.
+    #[test]
+    fn probe_reports_display_dims_for_rotated_video() {
+        ensure_ffmpeg().unwrap();
+        let dir = std::env::temp_dir();
+        let plain = dir.join("tf_test_plain.mp4");
+        let rotated = dir.join("tf_test_rotated.mp4");
+
+        let mut make = FfmpegCommand::new();
+        make.arg("-y")
+            .arg("-f")
+            .arg("lavfi")
+            .input("testsrc=size=640x360:rate=30:duration=1")
+            .arg("-pix_fmt")
+            .arg("yuv420p")
+            .arg(plain.to_string_lossy().to_string());
+        run_to_completion(make).unwrap();
+
+        let mut remux = FfmpegCommand::new();
+        remux
+            .arg("-y")
+            .arg("-display_rotation")
+            .arg("-90")
+            .input(&plain.to_string_lossy())
+            .arg("-c")
+            .arg("copy")
+            .arg(rotated.to_string_lossy().to_string());
+        run_to_completion(remux).unwrap();
+
+        let info = probe_media_blocking(&plain.to_string_lossy()).unwrap();
+        assert_eq!((info.width, info.height), (640, 360));
+        let info = probe_media_blocking(&rotated.to_string_lossy()).unwrap();
+        assert_eq!((info.width, info.height), (360, 640));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

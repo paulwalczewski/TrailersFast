@@ -58,10 +58,10 @@ export function AssetsTab() {
                 </button>
                 <div className="flex flex-row items-center gap-2.5">
                   <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-surface-tertiary text-xs text-muted">
-                    {a.loading ? (
-                      <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                    ) : a.posterUrl ? (
+                    {a.posterUrl ? (
                       <img src={a.posterUrl} alt="" className="size-full object-cover" />
+                    ) : a.loading || a.mediaLoading ? (
+                      <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
                     ) : (
                       "▶"
                     )}

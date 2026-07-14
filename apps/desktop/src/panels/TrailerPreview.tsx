@@ -36,16 +36,25 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
   const clips = useMemo<PreviewClip[]>(
     () =>
       buildTrailerClips(markers, assetsById, PREVIEW_FPS).map((c) => {
+        const asset = assetsById[c.assetId];
+        // Thumbnails are already displayable URLs (used raw in the asset cards).
+        const filmstripUrls = asset?.filmstripUrls ?? [];
+        const startSec = c.trimBeforeInFrames / PREVIEW_FPS;
+        const common = {
+          id: c.markerId,
+          durationInFrames: c.durationInFrames,
+          filmstripUrls,
+          startSec,
+          assetDurationSec: asset?.durationSec ?? 0,
+          srcWidth: asset?.width ?? 0,
+          srcHeight: asset?.height ?? 0,
+          transform: c.transform,
+        };
         const proxy = proxies[c.proxyKey];
         // Proxy plays linearly from 0 (smooth); source+trim is the fallback until ready.
         return proxy
-          ? { id: c.markerId, src: engine.toPlayableUrl(proxy), trimBeforeInFrames: 0, durationInFrames: c.durationInFrames }
-          : {
-              id: c.markerId,
-              src: engine.toPlayableUrl(c.assetPath),
-              trimBeforeInFrames: c.trimBeforeInFrames,
-              durationInFrames: c.durationInFrames,
-            };
+          ? { ...common, src: engine.toPlayableUrl(proxy), trimBeforeInFrames: 0 }
+          : { ...common, src: engine.toPlayableUrl(c.assetPath), trimBeforeInFrames: c.trimBeforeInFrames };
       }),
     [markers, assetsById, proxies],
   );
@@ -111,7 +120,9 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
   }
 
   return (
-    <div className="mx-auto overflow-hidden rounded-xl border border-separator bg-black" style={boxStyle}>
+    // ring, not border: a border shrinks the content box and skews its aspect
+    // ratio, making the Player letterbox a ~1px black sliver.
+    <div className="mx-auto overflow-hidden rounded-xl bg-black ring-1 ring-separator" style={boxStyle}>
       <Player
         ref={playerRef}
         component={TrailerComposition}
