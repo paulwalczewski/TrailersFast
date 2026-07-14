@@ -1,5 +1,5 @@
-import { type ClipTransform, type FitMode, clipRenderBox } from "@trailerfast/core";
-import { useMemo, useState } from "react";
+import { type ClipTransform, type FitMode, clipRenderBox, filmstripFrameAt } from "@trailerfast/core";
+import { useMemo } from "react";
 import {
   AbsoluteFill,
   Sequence,
@@ -8,6 +8,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { clipBoxStyle, useMediaReady } from "../ui/clipMedia";
 import { IntroTitle, type IntroProps } from "./IntroTitle";
 import { WatermarkOverlay, type WatermarkProps } from "./WatermarkOverlay";
 
@@ -64,7 +65,6 @@ function ClipVisual({ clip, fitMode, flipHorizontal }: ClipVisualProps) {
   const { srcWidth, srcHeight, transform } = clip;
   // Rebuilt only when fit/flip/framing change, not every frame (this renders per frame).
   const style = useMemo<React.CSSProperties>(() => {
-    const flip = flipHorizontal ? "scaleX(-1)" : undefined;
     // Source dims unknown (still probing) — degrade to plain object-fit.
     if (srcWidth <= 0 || srcHeight <= 0) {
       return {
@@ -73,37 +73,22 @@ function ClipVisual({ clip, fitMode, flipHorizontal }: ClipVisualProps) {
         width: "100%",
         height: "100%",
         objectFit: fitMode,
-        transform: flip,
+        transform: flipHorizontal ? "scaleX(-1)" : undefined,
       };
     }
     const box = clipRenderBox(srcWidth, srcHeight, canvasW, canvasH, fitMode, transform);
-    return {
-      position: "absolute",
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
-      // Tailwind preflight sets img/video { max-width: 100% }, which would
-      // clamp the overflowing box — inline width can't beat a CSS max-width.
-      maxWidth: "none",
-      // The box already encodes the fit — media must fill it exactly.
-      objectFit: "fill",
-      transform: flip,
-    };
+    return clipBoxStyle(box, { flip: flipHorizontal });
   }, [fitMode, flipHorizontal, srcWidth, srcHeight, canvasW, canvasH, transform]);
 
   // The webview paints <video> black until a frame is decoded, which would
   // cover the thumbnail behind it — keep the video invisible until then.
-  const [readySrc, setReadySrc] = useState("");
-  const videoReady = readySrc === clip.src;
+  const [videoReady, markReady] = useMediaReady(clip.src);
 
-  let thumb: string | undefined;
-  if (clip.filmstripUrls.length > 0 && clip.assetDurationSec > 0) {
-    const sourceSec = clip.startSec + frame / fps;
-    const n = clip.filmstripUrls.length;
-    const idx = Math.min(n - 1, Math.max(0, Math.floor((sourceSec / clip.assetDurationSec) * n)));
-    thumb = clip.filmstripUrls[idx];
-  }
+  const thumb = filmstripFrameAt(
+    clip.filmstripUrls,
+    clip.startSec + frame / fps,
+    clip.assetDurationSec,
+  );
 
   return (
     <AbsoluteFill>
@@ -115,9 +100,9 @@ function ClipVisual({ clip, fitMode, flipHorizontal }: ClipVisualProps) {
         trimAfter={clip.trimBeforeInFrames + clip.durationInFrames}
         pauseWhenBuffering
         acceptableTimeShiftInSeconds={10}
-        onLoadedData={() => setReadySrc(clip.src)}
-        onCanPlay={() => setReadySrc(clip.src)}
-        onTimeUpdate={videoReady ? undefined : () => setReadySrc(clip.src)}
+        onLoadedData={markReady}
+        onCanPlay={markReady}
+        onTimeUpdate={videoReady ? undefined : markReady}
         style={videoReady ? style : { ...style, opacity: 0 }}
       />
     </AbsoluteFill>

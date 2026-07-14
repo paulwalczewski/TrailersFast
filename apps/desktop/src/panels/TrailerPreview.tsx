@@ -39,13 +39,12 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
         const asset = assetsById[c.assetId];
         // Thumbnails are already displayable URLs (used raw in the asset cards).
         const filmstripUrls = asset?.filmstripUrls ?? [];
-        const startSec = c.trimBeforeInFrames / PREVIEW_FPS;
         const common = {
           id: c.markerId,
           durationInFrames: c.durationInFrames,
           filmstripUrls,
-          startSec,
-          assetDurationSec: asset?.durationSec ?? 0,
+          startSec: c.startSec,
+          assetDurationSec: c.assetDurationSec,
           srcWidth: asset?.width ?? 0,
           srcHeight: asset?.height ?? 0,
           transform: c.transform,

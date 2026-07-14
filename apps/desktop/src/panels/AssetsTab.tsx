@@ -2,6 +2,7 @@ import { Card, Checkbox } from "@heroui/react";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useState } from "react";
 import { isTauri } from "../engine";
+import { Spinner } from "../ui/Spinner";
 import { fileRefFromPath, isVideoPath, useBrowseAssets, useIngest } from "../useIngest";
 
 export function AssetsTab() {
@@ -61,7 +62,7 @@ export function AssetsTab() {
                     {a.posterUrl ? (
                       <img src={a.posterUrl} alt="" className="size-full object-cover" />
                     ) : a.loading || a.mediaLoading ? (
-                      <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                      <Spinner />
                     ) : (
                       "▶"
                     )}

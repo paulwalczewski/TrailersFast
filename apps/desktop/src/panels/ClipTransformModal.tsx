@@ -5,13 +5,14 @@ import {
   canvasFor,
   clipRenderBox,
   defaultTransform,
+  filmstripFrameAt,
   isDefaultTransform,
-  panRange,
   proxyKey,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type PointerEvent, useMemo, useRef, useState } from "react";
+import { type PointerEvent, useMemo, useRef } from "react";
 import { engine } from "../engine";
+import { clipBoxStyle, useMediaReady } from "../ui/clipMedia";
 import { LabeledSlider } from "../ui/Fields";
 import { ModalShell } from "../ui/ModalShell";
 
@@ -46,18 +47,11 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
       ),
     [asset?.width, asset?.height, canvas.width, canvas.height, settings.fitMode, transform],
   );
-  const pan = useMemo(
-    () =>
-      panRange(
-        asset?.width ?? 0,
-        asset?.height ?? 0,
-        canvas.width,
-        canvas.height,
-        settings.fitMode,
-        transform.zoom,
-      ),
-    [asset?.width, asset?.height, canvas.width, canvas.height, settings.fitMode, transform.zoom],
-  );
+  // How far (canvas px) each axis can pan — half the box's overflow.
+  const pan = {
+    x: Math.max(0, (box.width - canvas.width) / 2),
+    y: Math.max(0, (box.height - canvas.height) / 2),
+  };
 
   // Proxy (already the trimmed clip) when ready; the raw source otherwise.
   const proxyPath = marker ? proxies[proxyKey(marker)] : undefined;
@@ -70,18 +64,17 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
   const mediaTime = marker ? (proxyPath ? marker.lengthSec / 2 : marker.startSec + marker.lengthSec / 2) : 0;
   // The webview paints <video> black until a frame is decoded — keep it hidden
   // (showing the instant filmstrip backdrop) until the seek target is ready.
-  const [readyUrl, setReadyUrl] = useState("");
-  const videoReady = readyUrl === mediaUrl;
+  const [videoReady, markReady] = useMediaReady(mediaUrl);
 
   if (!marker || !asset) return null;
 
   // Filmstrip frame nearest the clip middle: an instant, representative backdrop.
-  const midSec = marker.startSec + marker.lengthSec / 2;
-  const strip = asset.filmstripUrls;
   const backdrop =
-    strip.length > 0 && asset.durationSec > 0
-      ? strip[Math.min(strip.length - 1, Math.max(0, Math.floor((midSec / asset.durationSec) * strip.length)))]
-      : asset.posterUrl;
+    filmstripFrameAt(
+      asset.filmstripUrls,
+      marker.startSec + marker.lengthSec / 2,
+      asset.durationSec,
+    ) ?? asset.posterUrl;
 
   const clamp = (v: number) => Math.min(1, Math.max(-1, v));
   const pannable = pan.x > 0 || pan.y > 0;
@@ -111,19 +104,7 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
     dragStart.current = null;
   }
 
-  const pct = (v: number, total: number) => `${(v / total) * 100}%`;
-  const mediaStyle: React.CSSProperties = {
-    position: "absolute",
-    left: pct(box.left, canvas.width),
-    top: pct(box.top, canvas.height),
-    width: pct(box.width, canvas.width),
-    height: pct(box.height, canvas.height),
-    // Tailwind preflight sets img/video { max-width: 100% }, which would
-    // clamp the overflowing box — inline width can't beat a CSS max-width.
-    maxWidth: "none",
-    objectFit: "fill",
-    transform: settings.flipHorizontal ? "scaleX(-1)" : undefined,
-  };
+  const mediaStyle = clipBoxStyle(box, { flip: settings.flipHorizontal, canvas });
 
   return (
     <ModalShell onClose={onClose} className="w-[560px] max-w-full rounded-2xl bg-surface p-5 shadow-xl">
@@ -166,7 +147,7 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
           onLoadedMetadata={(e) => {
             e.currentTarget.currentTime = mediaTime;
           }}
-          onSeeked={() => setReadyUrl(mediaUrl)}
+          onSeeked={markReady}
           style={{ ...mediaStyle, opacity: videoReady ? 1 : 0 }}
         />
         {pannable ? (

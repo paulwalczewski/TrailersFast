@@ -14,6 +14,11 @@ export type TrailerClip = {
   trimBeforeInFrames: number;
   /** Visible length, in frames. */
   durationInFrames: number;
+  /** In-point + length within the source, seconds (exact marker values). */
+  startSec: number;
+  lengthSec: number;
+  /** Source duration, seconds. */
+  assetDurationSec: number;
   /** Cache key for this clip's preview proxy. */
   proxyKey: string;
   /** Framing (pan/zoom) within the trailer canvas. */
@@ -31,9 +36,22 @@ export function buildTrailerClips(
     assetPath: assetsById[m.assetId]?.path ?? "",
     trimBeforeInFrames: Math.round(m.startSec * fps),
     durationInFrames: Math.max(1, Math.round(m.lengthSec * fps)),
+    startSec: m.startSec,
+    lengthSec: m.lengthSec,
+    assetDurationSec: assetsById[m.assetId]?.durationSec ?? 0,
     proxyKey: proxyKey(m),
     transform: m.transform ?? defaultTransform(),
   }));
+}
+
+/** The filmstrip frame nearest a source time (undefined when none available). */
+export function filmstripFrameAt(
+  urls: string[],
+  sec: number,
+  durationSec: number,
+): string | undefined {
+  if (urls.length === 0 || durationSec <= 0) return undefined;
+  return urls[Math.min(urls.length - 1, Math.max(0, Math.floor((sec / durationSec) * urls.length)))];
 }
 
 export function totalFrames(clips: { durationInFrames: number }[]): number {

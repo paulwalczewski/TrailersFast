@@ -48,6 +48,24 @@ export function centeredClip(
   return { startSec: start, lengthSec: length };
 }
 
+/** Smallest a clip can be trimmed to, seconds. */
+export const MIN_CLIP_SEC = 0.2;
+
+/**
+ * Clamp a clip resize to valid bounds: at least MIN_CLIP_SEC long and fully
+ * inside [0, assetDurationSec] (length-only when the duration is unknown).
+ */
+export function clampClipResize(
+  startSec: number,
+  lengthSec: number,
+  assetDurationSec: number,
+): { startSec: number; lengthSec: number } {
+  if (assetDurationSec <= 0) return { startSec: Math.max(0, startSec), lengthSec: Math.max(MIN_CLIP_SEC, lengthSec) };
+  const start = Math.min(Math.max(0, startSec), Math.max(0, assetDurationSec - MIN_CLIP_SEC));
+  const length = Math.min(Math.max(MIN_CLIP_SEC, lengthSec), assetDurationSec - start);
+  return { startSec: start, lengthSec: length };
+}
+
 /** Next order index for a new marker (click order). */
 export function nextOrder(markers: ClipMarker[]): number {
   return markers.reduce((max, m) => Math.max(max, m.order), -1) + 1;

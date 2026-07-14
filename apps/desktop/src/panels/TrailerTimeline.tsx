@@ -8,14 +8,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { byId, orderedMarkers, totalFrames, trailerDuration } from "@trailerfast/core";
+import { MIN_CLIP_SEC, buildTrailerClips, byId, totalFrames, trailerDuration } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { type PointerEvent, type RefObject, useMemo, useRef, useState } from "react";
 import { PREVIEW_FPS } from "../composition/TrailerComposition";
+import { MediaLoadingPlaceholder } from "../ui/Spinner";
 import { ClipTransformModal } from "./ClipTransformModal";
-
-/** Smallest a clip can be trimmed to, seconds. */
-const MIN_CLIP_SEC = 0.2;
 
 type ClipItem = {
   id: string;
@@ -132,9 +130,7 @@ function SortableClip({
       {item.poster ? (
         <img src={item.poster} alt="" className="pointer-events-none size-full object-cover" />
       ) : item.mediaLoading ? (
-        <div className="pointer-events-none grid size-full animate-pulse place-items-center bg-surface-tertiary">
-          <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-        </div>
+        <MediaLoadingPlaceholder />
       ) : (
         <div className="pointer-events-none grid size-full place-items-center text-xs text-muted">
           {index + 1}
@@ -229,14 +225,14 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
   const assetsById = useMemo(() => byId(assets), [assets]);
   const items: ClipItem[] = useMemo(
     () =>
-      orderedMarkers(markers).map((m) => {
-        const asset = assetsById[m.assetId];
+      buildTrailerClips(markers, assetsById, PREVIEW_FPS).map((c) => {
+        const asset = assetsById[c.assetId];
         return {
-          id: m.id,
-          durationInFrames: Math.max(1, Math.round(m.lengthSec * PREVIEW_FPS)),
-          startSec: m.startSec,
-          lengthSec: m.lengthSec,
-          assetDurationSec: asset?.durationSec ?? 0,
+          id: c.markerId,
+          durationInFrames: c.durationInFrames,
+          startSec: c.startSec,
+          lengthSec: c.lengthSec,
+          assetDurationSec: c.assetDurationSec,
           poster: asset?.posterUrl,
           mediaLoading: asset?.mediaLoading ?? false,
           name: asset?.fileName ?? "clip",

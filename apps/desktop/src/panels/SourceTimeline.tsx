@@ -1,6 +1,7 @@
 import { type PlacedAsset, centeredClip, placeAssets, totalDuration } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { type MouseEvent, type PointerEvent, useRef, useState } from "react";
+import { MediaLoadingPlaceholder } from "../ui/Spinner";
 
 type Props = { playheadSec: number; onScrub: (sec: number) => void };
 type Ghost = { assetId: string; left: number; width: number };
@@ -118,9 +119,7 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
                   ))}
                 </div>
               ) : p.asset.mediaLoading ? (
-                <div className="pointer-events-none grid size-full animate-pulse place-items-center bg-surface-tertiary">
-                  <div className="size-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                </div>
+                <MediaLoadingPlaceholder />
               ) : (
                 <div className="pointer-events-none grid size-full place-items-center text-xs text-muted">
                   …
