@@ -113,27 +113,74 @@ fn find_font() -> Option<String> {
         .map(|p| p.to_string())
 }
 
-/// Best-effort resolve the chosen font family to a font file (macOS families),
-/// falling back to any available font. Export font fidelity is best-effort.
+/// Decorative fonts bundled with the app (OFL / Apache-2.0, from Google Fonts),
+/// embedded in the binary so the export renders them identically to the preview
+/// on any OS — not only where the family happens to be installed. Kept in sync
+/// with the @font-face block in index.css and the family list in core's
+/// INTRO_FONTS.
+static BUNDLED_FONTS: &[(&str, &str, &[u8])] = &[
+    ("pacifico", "Pacifico-Regular.ttf", include_bytes!("../../src/assets/fonts/Pacifico-Regular.ttf")),
+    ("permanent marker", "PermanentMarker-Regular.ttf", include_bytes!("../../src/assets/fonts/PermanentMarker-Regular.ttf")),
+    ("great vibes", "GreatVibes-Regular.ttf", include_bytes!("../../src/assets/fonts/GreatVibes-Regular.ttf")),
+    ("lobster", "Lobster-Regular.ttf", include_bytes!("../../src/assets/fonts/Lobster-Regular.ttf")),
+    ("bangers", "Bangers-Regular.ttf", include_bytes!("../../src/assets/fonts/Bangers-Regular.ttf")),
+    ("sacramento", "Sacramento-Regular.ttf", include_bytes!("../../src/assets/fonts/Sacramento-Regular.ttf")),
+    ("kalam", "Kalam-Regular.ttf", include_bytes!("../../src/assets/fonts/Kalam-Regular.ttf")),
+];
+
+/// If `lower` (a lowercased family name) names a bundled font, materialize it to
+/// a cache dir once and return the file path so freetype can read it.
+fn bundled_font_path(lower: &str) -> Option<String> {
+    let (_, file, bytes) = BUNDLED_FONTS.iter().find(|(name, _, _)| lower.contains(name))?;
+    let dir = std::env::temp_dir().join("trailersfast-fonts");
+    let path = dir.join(file);
+    if !path.exists() {
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, bytes).ok()?;
+    }
+    Some(path.to_string_lossy().into_owned())
+}
+
+/// macOS system font families → (regular path, optional bold path). One table
+/// shared by both resolvers: `find_font_for` takes the regular path, while
+/// `font_file_for` prefers the bold path for bold weights. Most specific first.
+static MAC_FONTS: &[(&str, &str, Option<&str>)] = &[
+    ("avenir next", "/System/Library/Fonts/Avenir Next.ttc", None),
+    ("avenir", "/System/Library/Fonts/Avenir.ttc", None),
+    ("helvetica neue", "/System/Library/Fonts/HelveticaNeue.ttc", None),
+    ("helvetica", "/System/Library/Fonts/Helvetica.ttc", None),
+    ("futura", "/System/Library/Fonts/Supplemental/Futura.ttc", None),
+    ("gill sans", "/System/Library/Fonts/Supplemental/GillSans.ttc", None),
+    ("arial", "/System/Library/Fonts/Supplemental/Arial.ttf", Some("/System/Library/Fonts/Supplemental/Arial Bold.ttf")),
+    ("georgia", "/System/Library/Fonts/Supplemental/Georgia.ttf", Some("/System/Library/Fonts/Supplemental/Georgia Bold.ttf")),
+    ("times new roman", "/System/Library/Fonts/Supplemental/Times New Roman.ttf", Some("/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf")),
+    ("verdana", "/System/Library/Fonts/Supplemental/Verdana.ttf", Some("/System/Library/Fonts/Supplemental/Verdana Bold.ttf")),
+    ("trebuchet", "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf", Some("/System/Library/Fonts/Supplemental/Trebuchet MS Bold.ttf")),
+    ("courier new", "/System/Library/Fonts/Supplemental/Courier New.ttf", Some("/System/Library/Fonts/Supplemental/Courier New Bold.ttf")),
+    ("impact", "/System/Library/Fonts/Supplemental/Impact.ttf", None),
+    // Decorative / hand-written faces (single-weight except Comic Sans).
+    ("bradley hand", "/System/Library/Fonts/Supplemental/Bradley Hand Bold.ttf", None),
+    ("marker felt", "/System/Library/Fonts/MarkerFelt.ttc", None),
+    ("noteworthy", "/System/Library/Fonts/Noteworthy.ttc", None),
+    ("chalkboard", "/System/Library/Fonts/Supplemental/ChalkboardSE.ttc", None),
+    ("snell roundhand", "/System/Library/Fonts/Supplemental/SnellRoundhand.ttc", None),
+    ("brush script", "/System/Library/Fonts/Supplemental/Brush Script.ttf", None),
+    ("zapfino", "/System/Library/Fonts/Supplemental/Zapfino.ttf", None),
+    ("comic sans", "/System/Library/Fonts/Supplemental/Comic Sans MS.ttf", Some("/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf")),
+    ("papyrus", "/System/Library/Fonts/Supplemental/Papyrus.ttc", None),
+    ("apple chancery", "/System/Library/Fonts/Supplemental/Apple Chancery.ttf", None),
+];
+
+/// Best-effort resolve the chosen font family to a font file. Bundled fonts win
+/// (they exist on any OS), then macOS system families, then any available font.
 fn find_font_for(family: &str) -> Option<String> {
     let lower = family.to_lowercase();
-    let map: &[(&str, &str)] = &[
-        ("avenir next", "/System/Library/Fonts/Avenir Next.ttc"),
-        ("avenir", "/System/Library/Fonts/Avenir.ttc"),
-        ("helvetica", "/System/Library/Fonts/Helvetica.ttc"),
-        ("futura", "/System/Library/Fonts/Futura.ttc"),
-        ("gill sans", "/System/Library/Fonts/Supplemental/GillSans.ttc"),
-        ("georgia", "/System/Library/Fonts/Supplemental/Georgia.ttf"),
-        ("times new roman", "/System/Library/Fonts/Supplemental/Times New Roman.ttf"),
-        ("arial", "/System/Library/Fonts/Supplemental/Arial.ttf"),
-        ("verdana", "/System/Library/Fonts/Supplemental/Verdana.ttf"),
-        ("trebuchet ms", "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf"),
-        ("courier new", "/System/Library/Fonts/Supplemental/Courier New.ttf"),
-        ("impact", "/System/Library/Fonts/Supplemental/Impact.ttf"),
-    ];
-    for (name, path) in map {
-        if lower.contains(name) && std::path::Path::new(path).exists() {
-            return Some((*path).to_string());
+    if let Some(p) = bundled_font_path(&lower) {
+        return Some(p);
+    }
+    for (name, reg, _bold) in MAC_FONTS {
+        if lower.contains(name) && std::path::Path::new(reg).exists() {
+            return Some((*reg).to_string());
         }
     }
     find_font()
@@ -176,32 +223,22 @@ fn one_drawtext(
     )
 }
 
-/// Resolve a font family + CSS weight to an explicit font file (macOS paths),
-/// preferring a bold file for bold weights, falling back to any available font.
+/// Resolve a font family + CSS weight to an explicit font file, preferring a
+/// bold file for bold weights, falling back to any available font.
 fn font_file_for(family: &str, weight: u32) -> Option<String> {
-    let bold = weight >= 700;
     let lower = family.to_lowercase();
-    // (family substring, regular path, bold path) — most specific first.
-    let map: &[(&str, &str, &str)] = &[
-        ("avenir next", "/System/Library/Fonts/Avenir Next.ttc", "/System/Library/Fonts/Avenir Next.ttc"),
-        ("avenir", "/System/Library/Fonts/Avenir.ttc", "/System/Library/Fonts/Avenir.ttc"),
-        ("helvetica neue", "/System/Library/Fonts/HelveticaNeue.ttc", "/System/Library/Fonts/HelveticaNeue.ttc"),
-        ("helvetica", "/System/Library/Fonts/Helvetica.ttc", "/System/Library/Fonts/Helvetica.ttc"),
-        ("futura", "/System/Library/Fonts/Supplemental/Futura.ttc", "/System/Library/Fonts/Supplemental/Futura.ttc"),
-        ("gill sans", "/System/Library/Fonts/Supplemental/GillSans.ttc", "/System/Library/Fonts/Supplemental/GillSans.ttc"),
-        ("arial", "/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
-        ("georgia", "/System/Library/Fonts/Supplemental/Georgia.ttf", "/System/Library/Fonts/Supplemental/Georgia Bold.ttf"),
-        ("times new roman", "/System/Library/Fonts/Supplemental/Times New Roman.ttf", "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf"),
-        ("verdana", "/System/Library/Fonts/Supplemental/Verdana.ttf", "/System/Library/Fonts/Supplemental/Verdana Bold.ttf"),
-        ("trebuchet", "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf", "/System/Library/Fonts/Supplemental/Trebuchet MS Bold.ttf"),
-        ("courier new", "/System/Library/Fonts/Supplemental/Courier New.ttf", "/System/Library/Fonts/Supplemental/Courier New Bold.ttf"),
-        ("impact", "/System/Library/Fonts/Supplemental/Impact.ttf", "/System/Library/Fonts/Supplemental/Impact.ttf"),
-    ];
-    for (name, reg, bld) in map {
+    // Bundled fonts are single-weight and portable — prefer them for any weight.
+    if let Some(p) = bundled_font_path(&lower) {
+        return Some(p);
+    }
+    for (name, reg, bold) in MAC_FONTS {
         if lower.contains(name) {
-            let pick = if bold { bld } else { reg };
-            if std::path::Path::new(pick).exists() {
-                return Some((*pick).to_string());
+            if weight >= 700 {
+                if let Some(b) = bold {
+                    if std::path::Path::new(b).exists() {
+                        return Some((*b).to_string());
+                    }
+                }
             }
             if std::path::Path::new(reg).exists() {
                 return Some((*reg).to_string());

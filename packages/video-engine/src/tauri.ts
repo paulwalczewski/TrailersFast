@@ -4,7 +4,7 @@
  * adapter can mirror the same shape without importing Tauri.
  */
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { type ExportPlan, VIDEO_EXTENSIONS } from "@trailerfast/core";
+import { type ExportPlan, type ImageFormat, VIDEO_EXTENSIONS } from "@trailerfast/core";
 import type { FileRef, MediaInfo, Progress, VideoEngine } from "./index";
 
 export function createTauriVideoEngine(): VideoEngine {
@@ -29,6 +29,20 @@ export function createTauriVideoEngine(): VideoEngine {
       return invoke<string[]>("generate_thumbnails", { path: file.path, atSecs });
     },
 
+    frames(
+      file: FileRef,
+      atSecs: number[],
+      opts: { width?: number; lossless?: boolean } = {},
+    ): Promise<string[]> {
+      return invoke<string[]>("extract_frames", {
+        path: file.path,
+        atSecs,
+        // 0 = keep the source width.
+        width: Math.max(0, Math.round(opts.width ?? 0)),
+        lossless: opts.lossless ?? false,
+      });
+    },
+
     generateProxy(file: FileRef, startSec: number, lengthSec: number): Promise<string> {
       return invoke<string>("generate_proxy", { path: file.path, startSec, lengthSec });
     },
@@ -37,13 +51,34 @@ export function createTauriVideoEngine(): VideoEngine {
       return convertFileSrc(path);
     },
 
-    async pickSavePath(defaultName: string): Promise<string | null> {
+    async pickSavePath(
+      defaultName: string,
+      filter: { name: string; extensions: string[] } = {
+        name: "MP4 video",
+        extensions: ["mp4"],
+      },
+    ): Promise<string | null> {
       const { save } = await import("@tauri-apps/plugin-dialog");
-      const path = await save({
-        defaultPath: defaultName,
-        filters: [{ name: "MP4 video", extensions: ["mp4"] }],
-      });
+      const path = await save({ defaultPath: defaultName, filters: [filter] });
       return path ?? null;
+    },
+
+    imageFormats(): Promise<ImageFormat[]> {
+      return invoke<ImageFormat[]>("image_formats");
+    },
+
+    saveImage(
+      pngBase64: string,
+      outPath: string,
+      format: ImageFormat,
+      quality: number,
+    ): Promise<string> {
+      return invoke<string>("save_image", {
+        pngBase64,
+        outPath,
+        format,
+        quality: Math.round(quality),
+      });
     },
 
     export(

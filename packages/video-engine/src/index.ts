@@ -3,7 +3,7 @@
  * interface — never on `@tauri-apps/api` or a web backend directly. Desktop
  * injects `TauriVideoEngine`; a future web app injects a `WebVideoEngine`.
  */
-import type { ExportPlan } from "@trailerfast/core";
+import type { ExportPlan, ImageFormat } from "@trailerfast/core";
 
 /** A reference to a file the engine can read. */
 export type FileRef = { path: string; fileName: string };
@@ -27,14 +27,38 @@ export interface VideoEngine {
   probe(file: FileRef): Promise<MediaInfo>;
   /** Generate thumbnails at the given timestamps; returns displayable URLs. */
   thumbnails(file: FileRef, atSecs: number[]): Promise<string[]>;
+  /**
+   * Extract frames at a chosen width; returns displayable URLs. `lossless`
+   * yields PNG (for compositing) instead of JPEG (for on-screen use).
+   */
+  frames(
+    file: FileRef,
+    atSecs: number[],
+    opts?: { width?: number; lossless?: boolean },
+  ): Promise<string[]>;
   /** Render a small proxy clip (trimmed, starts at 0) for smooth preview; returns its path. */
   generateProxy(file: FileRef, startSec: number, lengthSec: number): Promise<string>;
   /** Convert a local file path into a URL the webview/player can load. */
   toPlayableUrl(path: string): string;
-  /** Open a save dialog; returns the chosen output path or null if cancelled. */
-  pickSavePath(defaultName: string): Promise<string | null>;
+  /**
+   * Open a save dialog; returns the chosen output path or null if cancelled.
+   * `filter` defaults to MP4 video.
+   */
+  pickSavePath(
+    defaultName: string,
+    filter?: { name: string; extensions: string[] },
+  ): Promise<string | null>;
   /** Run the full export pipeline, reporting progress; resolves to a warning string ("" if none). */
   export(plan: ExportPlan, outPath: string, onProgress: (p: Progress) => void): Promise<string>;
+  /** Image formats this build can write (a subset of `IMAGE_FORMATS`). */
+  imageFormats(): Promise<ImageFormat[]>;
+  /** Encode a base64 PNG (no data-URI prefix) into `outPath`; resolves to that path. */
+  saveImage(
+    pngBase64: string,
+    outPath: string,
+    format: ImageFormat,
+    quality: number,
+  ): Promise<string>;
 }
 
 export { createTauriVideoEngine } from "./tauri";

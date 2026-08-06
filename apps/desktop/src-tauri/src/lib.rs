@@ -1,4 +1,5 @@
 pub mod export;
+pub mod image;
 pub mod mcp;
 pub mod scenes;
 
@@ -37,7 +38,7 @@ pub(crate) fn ensure_ffmpeg() -> Result<(), String> {
 }
 
 /// Spawn a fire-and-forget FFmpeg command and block until it finishes writing.
-fn run_to_completion(mut cmd: FfmpegCommand) -> Result<(), String> {
+pub(crate) fn run_to_completion(mut cmd: FfmpegCommand) -> Result<(), String> {
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     for _ in child.iter().map_err(|e| e.to_string())? {}
     Ok(())
@@ -122,13 +123,19 @@ fn probe_media_blocking(path: &str) -> Result<MediaInfo, String> {
 /// Monotonic id so concurrent frame-extraction jobs never share a temp file name.
 static THUMB_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// Extract a single frame at `at_sec` as JPEG bytes, `width`px wide.
-/// -ss before -i = fast keyframe seek. Blocking; shared by the thumbnail
-/// pipeline and the MCP `get_frames` tool.
-pub(crate) fn extract_frame_jpeg(path: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, String> {
+/// Extract a single frame at `at_sec`, `width`px wide (0 = keep the source
+/// width), encoded as `ext` ("jpg" or "png"). -ss before -i = fast keyframe
+/// seek. Blocking; shared by the filmstrip pipeline, the thumbnail editor and
+/// the MCP `get_frames` tool.
+pub(crate) fn extract_frame_encoded(
+    path: &str,
+    at_sec: f64,
+    width: u32,
+    ext: &str,
+) -> Result<Vec<u8>, String> {
     ensure_ffmpeg()?;
     let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let outfile = std::env::temp_dir().join(format!("tf_frame_{}_{job}.jpg", std::process::id()));
+    let outfile = std::env::temp_dir().join(format!("tf_frame_{}_{job}.{ext}", std::process::id()));
 
     let mut cmd = FfmpegCommand::new();
     cmd.arg("-y")
@@ -136,17 +143,24 @@ pub(crate) fn extract_frame_jpeg(path: &str, at_sec: f64, width: u32) -> Result<
         .arg(format!("{at_sec}"))
         .input(path)
         .arg("-frames:v")
-        .arg("1")
-        .arg("-vf")
-        .arg(format!("scale={width}:-2"))
-        .arg("-q:v")
-        .arg("4")
-        .arg(outfile.to_string_lossy().to_string());
+        .arg("1");
+    if width > 0 {
+        cmd.arg("-vf").arg(format!("scale={width}:-2"));
+    }
+    if ext == "jpg" {
+        cmd.arg("-q:v").arg("4");
+    }
+    cmd.arg(outfile.to_string_lossy().to_string());
     run_to_completion(cmd)?;
 
     let bytes = std::fs::read(&outfile).map_err(|e| format!("no frame at {at_sec}s: {e}"))?;
     let _ = std::fs::remove_file(&outfile);
     Ok(bytes)
+}
+
+/// Extract a single frame as JPEG bytes, `width`px wide.
+pub(crate) fn extract_frame_jpeg(path: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, String> {
+    extract_frame_encoded(path, at_sec, width, "jpg")
 }
 
 /// Extract one frame at each timestamp, scaled small, returned as base64 JPEG
@@ -334,6 +348,9 @@ pub fn run() {
             generate_thumbnails,
             generate_proxy,
             export_trailer,
+            image::extract_frames,
+            image::image_formats,
+            image::save_image,
             mcp::mcp_status,
             mcp::mcp_respond,
             mcp::mcp_set_enabled

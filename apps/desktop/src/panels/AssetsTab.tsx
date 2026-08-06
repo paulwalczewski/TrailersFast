@@ -79,7 +79,7 @@ export function AssetsTab() {
                     isSelected={a.selected}
                     onChange={() => toggle(a.id)}
                     isDisabled={a.loading}
-                    aria-label={`Include ${a.fileName} in the trailer`}
+                    aria-label={`Include ${a.fileName} on the source timeline`}
                     className="mr-1.5"
                   >
                     <Checkbox.Content>

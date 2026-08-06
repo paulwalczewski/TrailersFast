@@ -7,22 +7,31 @@ import {
   EXPORT_PRESETS,
   FIT_MODES,
   HEADING_WEIGHTS,
+  IMAGE_FORMATS,
   INTRO_ANIMATIONS,
+  type ImageFormat,
   MAX_CLIP_ZOOM,
+  THUMBNAIL_FONT_SIZE_RANGE,
+  THUMBNAIL_SIZES,
+  THUMBNAIL_TEMPLATES,
   TITLE_CARD_DURATION_RANGE,
   TITLE_CARD_FONT_SIZE_RANGE,
+  type ThumbnailFrame,
   VALIGNS,
   WATERMARK_FONT_SIZE_RANGE,
   WATERMARK_OPACITY_RANGE,
   WATERMARK_POSITIONS,
   byId,
   clamp,
+  effectiveScrim,
+  framesUsed,
   orderedMarkers,
   trailerDuration,
 } from "@trailerfast/core";
-import { useTrailerStore } from "@trailerfast/state";
+import { type EditorMode, useTrailerStore } from "@trailerfast/state";
 import type { FileRef } from "@trailerfast/video-engine";
 import { performExport } from "../exportTrailer";
+import { performThumbnailExport } from "../exportThumbnail";
 import { type IngestOutcome, fileRefFromPath, isVideoPath } from "../useIngest";
 
 /** What the bridge hook injects: ingest lives in a React hook, not the store. */
@@ -63,6 +72,50 @@ function clipSummary(m: ClipMarker, assets: Record<string, Asset>) {
     startSec: m.startSec,
     lengthSec: m.lengthSec,
     transform: m.transform,
+  };
+}
+
+function frameSummary(f: ThumbnailFrame, index: number, assets: Record<string, Asset>) {
+  return {
+    id: f.id,
+    index,
+    assetId: f.assetId,
+    assetFileName: assets[f.assetId]?.fileName ?? "",
+    atSec: f.atSec,
+    transform: f.transform,
+  };
+}
+
+function getFrame(frameId: string): ThumbnailFrame {
+  return (
+    useTrailerStore.getState().thumbnail.frames.find((f) => f.id === frameId) ??
+    fail(`no thumbnail frame with id "${frameId}" — call get_project for current frame ids`)
+  );
+}
+
+/** frameSummary for a frame id, resolving its current index + assets. */
+function frameResult(frameId: string) {
+  const { thumbnail, assets } = useTrailerStore.getState();
+  return frameSummary(
+    getFrame(frameId),
+    thumbnail.frames.findIndex((f) => f.id === frameId),
+    byId(assets),
+  );
+}
+
+/** The thumbnail as reported by get_project and every thumbnail mutation. */
+function thumbnailSummary() {
+  const { thumbnail, assets } = useTrailerStore.getState();
+  const assetsById = byId(assets);
+  return {
+    template: thumbnail.template,
+    aspectRatio: thumbnail.aspectRatio,
+    scrim: thumbnail.scrim,
+    // The scrim only paints while there's a title to keep readable.
+    effectiveScrim: effectiveScrim(thumbnail),
+    title: thumbnail.title,
+    framesUsedByTemplate: framesUsed(thumbnail),
+    frames: thumbnail.frames.map((f, i) => frameSummary(f, i, assetsById)),
   };
 }
 
@@ -124,16 +177,24 @@ export async function handleMcpRequest(
     }
 
     case "get_project": {
-      const { settings, intro, outro, watermark, markers, assets } = s();
+      const { settings, intro, outro, watermark, markers, assets, mode } = s();
       const assetsById = byId(assets);
       return {
+        mode,
         settings,
         intro,
         outro,
         watermark,
         clips: orderedMarkers(markers).map((m) => clipSummary(m, assetsById)),
         trailerDurationSec: trailerDuration(markers),
+        thumbnail: thumbnailSummary(),
       };
+    }
+
+    case "set_mode": {
+      oneOf(p.mode, ["trailer", "thumbnail"], "mode");
+      s().setMode(p.mode as EditorMode);
+      return { mode: s().mode };
     }
 
     case "update_settings": {
@@ -222,6 +283,79 @@ export async function handleMcpRequest(
       if (p.zoom !== undefined) patch.zoom = clamp(p.zoom, 1, MAX_CLIP_ZOOM);
       s().setMarkerTransform(clip.id, patch);
       return { clip: clipSummary(getClip(clip.id), byId(s().assets)) };
+    }
+
+    case "update_thumbnail": {
+      const patch: Record<string, unknown> = {};
+      if (p.template !== undefined) {
+        oneOf(p.template, THUMBNAIL_TEMPLATES.map((t) => t.id), "template");
+        patch.template = p.template;
+      }
+      if (p.aspectRatio !== undefined) {
+        oneOf(p.aspectRatio, ASPECT_RATIOS.map((a) => a.id), "aspectRatio");
+        patch.aspectRatio = p.aspectRatio;
+      }
+      if (p.scrim !== undefined) patch.scrim = clamp(p.scrim, 0, 0.8);
+      s().updateThumbnail(patch);
+      return { thumbnail: thumbnailSummary() };
+    }
+
+    case "update_thumbnail_title": {
+      const patch: Record<string, unknown> = { ...(p as object) };
+      if (p.align !== undefined) oneOf(p.align, ALIGNMENTS, "align");
+      if (p.vAlign !== undefined) oneOf(p.vAlign, VALIGNS, "vAlign");
+      if (p.headingWeight !== undefined)
+        oneOf(String(p.headingWeight), HEADING_WEIGHTS.map((w) => w.id), "headingWeight");
+      if (p.fontSizePx !== undefined)
+        patch.fontSizePx = inRange(p.fontSizePx, THUMBNAIL_FONT_SIZE_RANGE);
+      s().updateThumbnailTitle(patch);
+      return { thumbnail: thumbnailSummary() };
+    }
+
+    case "add_thumbnail_frame": {
+      const asset = getAsset(p.assetId, { probed: true });
+      const atSec = p.atSec as number;
+      if (atSec < 0 || atSec >= asset.durationSec)
+        fail(`atSec must be within 0..${asset.durationSec.toFixed(1)}s for this asset`);
+      // An unselected asset isn't on the source timeline, and deselecting drops
+      // its frames — include it like a user checkbox click would.
+      if (!asset.selected) s().toggleAssetSelected(asset.id);
+      const id = s().addThumbnailFrame(asset.id, atSec);
+      return { frame: frameResult(id), totalFrames: s().thumbnail.frames.length };
+    }
+
+    case "remove_thumbnail_frame": {
+      const frame = getFrame(p.frameId);
+      s().removeThumbnailFrame(frame.id);
+      return { removed: frame.id, remainingFrames: s().thumbnail.frames.length };
+    }
+
+    case "set_thumbnail_frame_transform": {
+      const frame = getFrame(p.frameId);
+      const patch: Record<string, number> = {};
+      if (p.offsetX !== undefined) patch.offsetX = clamp(p.offsetX, -1, 1);
+      if (p.offsetY !== undefined) patch.offsetY = clamp(p.offsetY, -1, 1);
+      if (p.zoom !== undefined) patch.zoom = clamp(p.zoom, 1, MAX_CLIP_ZOOM);
+      s().setThumbnailFrameTransform(frame.id, patch);
+      return { frame: frameResult(frame.id) };
+    }
+
+    case "export_thumbnail": {
+      if (s().thumbnail.frames.length === 0)
+        fail("the thumbnail has no frames — add_thumbnail_frame first");
+      const format = (p.format as string | undefined) ?? "png";
+      oneOf(format, IMAGE_FORMATS.map((f) => f.id), "format");
+      const size = (p.size as string | undefined) ?? "1080";
+      oneOf(size, THUMBNAIL_SIZES.map((x) => x.id), "size");
+      const shortSide = THUMBNAIL_SIZES.find((x) => x.id === size)?.shortSide ?? 1080;
+      const quality = clamp((p.quality as number | undefined) ?? 90, 30, 100);
+      const outputPath = p.outputPath as string;
+      await performThumbnailExport(outputPath, {
+        shortSide,
+        format: format as ImageFormat,
+        quality,
+      });
+      return { outputPath, format, size, quality };
     }
 
     case "export_trailer": {

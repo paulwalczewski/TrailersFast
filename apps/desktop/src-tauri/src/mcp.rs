@@ -465,6 +465,107 @@ pub struct ExportTrailerParams {
     pub codec: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetModeParams {
+    /// Which editor the window shows: "trailer" or "thumbnail".
+    pub mode: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateThumbnailParams {
+    /// Layout for the picked frames: "mosaic", "stripes-horizontal", "stripes-vertical" or "single".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Thumbnail aspect ratio: "16:9", "9:16", "1:1", "4:5" or "4:3". Independent of the trailer's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aspect_ratio: Option<String>,
+    /// Dark wash over the frames, 0..0.8, so the title stays readable. Only painted while the thumbnail has a title.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scrim: Option<f64>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateThumbnailTitleParams {
+    /// Draw the title over the thumbnail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Heading line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Optional description line below the heading.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Font family, e.g. "Avenir Next", "Helvetica Neue", "Futura", "Inter".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    /// Heading weight: 400, 500, 600, 700 or 800.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading_weight: Option<u32>,
+    /// Heading size in canvas pixels, 24..240 (canvas short side is 1080).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size_px: Option<u32>,
+    /// Text color as hex, e.g. "#ffffff".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Horizontal alignment: "left", "center" or "right".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub align: Option<String>,
+    /// Vertical alignment: "top", "middle" or "bottom".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub v_align: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddThumbnailFrameParams {
+    /// Id of the source asset (from list_assets / add_assets).
+    pub asset_id: String,
+    /// Timestamp within the source video, in seconds.
+    pub at_sec: f64,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveThumbnailFrameParams {
+    /// Id of the picked frame (from get_project / add_thumbnail_frame).
+    pub frame_id: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetThumbnailFrameTransformParams {
+    /// Id of the picked frame.
+    pub frame_id: String,
+    /// Horizontal pan across the tile's overflow: -1 (left edge) .. 1 (right edge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_x: Option<f64>,
+    /// Vertical pan across the tile's overflow: -1 (top) .. 1 (bottom).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_y: Option<f64>,
+    /// Zoom on top of the fit: 1..3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<f64>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportThumbnailParams {
+    /// Absolute path for the output image; its extension must match the format.
+    pub output_path: String,
+    /// Image format: "png" (default), "jpeg", "webp" or "avif". WebP/AVIF depend on the bundled FFmpeg build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// Output short side: "720", "1080" (default) or "1440". The aspect ratio sets the other edge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+    /// Encoder quality 30..100 (default 90). Ignored for PNG.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality: Option<u32>,
+}
+
 // ---------------------------------------------------------------------------
 // The MCP server itself
 // ---------------------------------------------------------------------------
@@ -556,9 +657,17 @@ impl TrailerMcp {
         self.forward("remove_asset", p, DEFAULT_TIMEOUT).await
     }
 
-    #[tool(description = "Get the full project state: settings (aspect ratio, fit mode, default clip length, flip), intro/outro cards, watermark, and the ordered list of trailer clips with their source assets and framing.")]
+    #[tool(description = "Get the full project state: the editor mode the window is showing, settings (aspect ratio, fit mode, default clip length, flip), intro/outro cards, watermark, the ordered list of trailer clips with their source assets and framing, and the thumbnail (template, aspect ratio, title, dim, picked frames).")]
     async fn get_project(&self) -> Result<CallToolResult, McpError> {
         self.forward("get_project", json!({}), DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Switch the window between the two editors: \"trailer\" (video) or \"thumbnail\" (still image). Both share the imported assets. Switch before working on one so the user watches the right editor.")]
+    async fn set_mode(
+        &self,
+        Parameters(p): Parameters<SetModeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("set_mode", p, DEFAULT_TIMEOUT).await
     }
 
     #[tool(description = "Update project settings. Only the provided fields change. The user sees changes live in the preview.")]
@@ -705,6 +814,80 @@ impl TrailerMcp {
         Ok(CallToolResult::success(content))
     }
 
+    #[tool(description = "Configure the thumbnail's layout: which template arranges the picked frames, the output aspect ratio, and the background dim. Only the provided fields change.")]
+    async fn update_thumbnail(
+        &self,
+        Parameters(p): Parameters<UpdateThumbnailParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("update_thumbnail", p, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Configure the heading + description drawn over the thumbnail. Only the provided fields change. Keep it short — a thumbnail title is read at a glance.")]
+    async fn update_thumbnail_title(
+        &self,
+        Parameters(p): Parameters<UpdateThumbnailTitleParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("update_thumbnail_title", p, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Pick a frame from a source asset into the thumbnail. Frames tile in pick order, so add them in the order they should read. Returns the created frame with its id.")]
+    async fn add_thumbnail_frame(
+        &self,
+        Parameters(p): Parameters<AddThumbnailFrameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("add_thumbnail_frame", p, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Remove a picked frame from the thumbnail. The remaining frames re-tile automatically.")]
+    async fn remove_thumbnail_frame(
+        &self,
+        Parameters(p): Parameters<RemoveThumbnailFrameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("remove_thumbnail_frame", p, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Reframe a picked frame inside the tile its template gives it (pan/zoom). Offsets are normalized to the tile's overflow, so any value in -1..1 keeps the tile fully covered.")]
+    async fn set_thumbnail_frame_transform(
+        &self,
+        Parameters(p): Parameters<SetThumbnailFrameTransformParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.forward("set_thumbnail_frame_transform", p, DEFAULT_TIMEOUT).await
+    }
+
+    #[tool(description = "Render the thumbnail to an image file. Blocks until the encode finishes and returns the output path. Requires at least one picked frame.")]
+    async fn export_thumbnail(
+        &self,
+        Parameters(p): Parameters<ExportThumbnailParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let format = p.format.clone().unwrap_or_else(|| "png".into());
+        let ext = match format.as_str() {
+            "png" => "png",
+            "jpeg" => "jpg",
+            "webp" => "webp",
+            "avif" => "avif",
+            other => return Err(tool_err(format!("unknown format \"{other}\""))),
+        };
+        if !p.output_path.to_lowercase().ends_with(&format!(".{ext}")) {
+            return Err(tool_err(format!("output_path must end with .{ext} for format \"{format}\"")));
+        }
+        if let Some(dir) = std::path::Path::new(&p.output_path).parent() {
+            if !dir.is_dir() {
+                return Err(tool_err(format!("output directory does not exist: {}", dir.display())));
+            }
+        }
+        // Available formats depend on the FFmpeg build — fail early with the list.
+        if format != "png" && format != "jpeg" {
+            let available = crate::image::available_formats();
+            if !available.iter().any(|f| f == &format) {
+                return Err(tool_err(format!(
+                    "this FFmpeg build cannot write {format} — available: {}",
+                    available.join(", ")
+                )));
+            }
+        }
+        self.forward("export_thumbnail", p, EXPORT_TIMEOUT).await
+    }
+
     #[tool(description = "Render the trailer to an .mp4 file with FFmpeg. Blocks until the encode finishes and returns the output path. Requires at least one clip.")]
     async fn export_trailer(
         &self,
@@ -732,12 +915,21 @@ impl ServerHandler for TrailerMcp {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(server_info)
             .with_instructions(
-                "Trailers Fast — a desktop trailer maker. Typical flow: add_assets with the \
-                 source video paths, get_project to see settings, update_settings (aspect \
-                 ratio, clip length), then detect_scenes + get_frames to find and look at the \
-                 strongest moments, add_clip for each one worth including, optionally update_intro / \
-                 update_outro / update_watermark, then export_trailer. The app shows every change live, so \
-                 the user watches the trailer assemble; every tool call is undoable in-app."
+                "Trailers Fast — a desktop trailer maker with two editors that share the same \
+                 imported assets: the video trailer and the thumbnail (a still image). \
+                 Trailer flow: add_assets with the source video paths, get_project to see \
+                 settings, update_settings (aspect ratio, clip length), then detect_scenes + \
+                 get_frames to find and look at the strongest moments, add_clip for each one \
+                 worth including, optionally update_intro / update_outro / update_watermark, \
+                 then export_trailer. \
+                 Thumbnail flow: set_mode(\"thumbnail\") so the user sees what you're building, \
+                 update_thumbnail to choose a template (mosaic / horizontal or vertical stripes / \
+                 single) and aspect ratio, add_thumbnail_frame for each moment worth showing \
+                 (they tile in pick order — use get_frames first to judge them), \
+                 set_thumbnail_frame_transform to reframe a tile, update_thumbnail_title for the \
+                 heading, then export_thumbnail. \
+                 The app shows every change live, so the user watches the work assemble; every \
+                 tool call is undoable in-app."
                     .to_string(),
             )
     }

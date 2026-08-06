@@ -94,6 +94,8 @@ export const TITLE_CARD_FONT_SIZE_RANGE = [20, 160] as const;
 export const WATERMARK_FONT_SIZE_RANGE = [12, 96] as const;
 export const WATERMARK_OPACITY_RANGE = [0.1, 1] as const;
 export const CLIP_LENGTH_RANGE = [1, 10] as const;
+/** Thumbnail titles run bigger than trailer title cards — one glanceable line. */
+export const THUMBNAIL_FONT_SIZE_RANGE = [24, 240] as const;
 
 export type IntroConfig = {
   enabled: boolean;
@@ -121,7 +123,11 @@ export type IntroConfig = {
   shadowY: number;
 };
 
-/** Curated font list for the intro — Avenir first, then popular web/desktop fonts. */
+/**
+ * Curated font list shared by the intro/outro cards, the watermark and the
+ * thumbnail title. Avenir first, then popular web/desktop fonts, then a group
+ * of decorative / hand-written faces for a more expressive look.
+ */
 export const INTRO_FONTS: string[] = [
   "Avenir Next",
   "Avenir",
@@ -136,7 +142,31 @@ export const INTRO_FONTS: string[] = [
   "Courier New",
   "Impact",
   "Inter",
+  // Bundled decorative / hand-written faces — embedded with the app (OFL/Apache),
+  // so they render identically in the preview, thumbnail and export on every OS.
+  "Pacifico",
+  "Permanent Marker",
+  "Great Vibes",
+  "Lobster",
+  "Bangers",
+  "Sacramento",
+  "Kalam",
+  // Decorative / hand-written (macOS system faces; render in the canvas preview
+  // and thumbnail, and are mapped to font files for the FFmpeg trailer export).
+  "Bradley Hand",
+  "Marker Felt",
+  "Noteworthy",
+  "Chalkboard SE",
+  "Snell Roundhand",
+  "Brush Script MT",
+  "Zapfino",
+  "Comic Sans MS",
+  "Papyrus",
+  "Apple Chancery",
 ];
+
+/** `INTRO_FONTS` as `{ id, label }` options, shared by every font picker. */
+export const FONT_OPTIONS = INTRO_FONTS.map((f) => ({ id: f, label: f }));
 
 export const HEADING_WEIGHTS: { id: string; label: string }[] = [
   { id: "400", label: "Regular" },
@@ -212,7 +242,123 @@ export type Project = {
   outro: IntroConfig;
   watermark: WatermarkConfig;
   settings: Settings;
+  /** The still image built from the same assets — see the Thumbnail mode. */
+  thumbnail: ThumbnailConfig;
 };
+
+/**
+ * Thumbnail mode. A still image built from frames picked off the same source
+ * timeline the trailer uses, arranged by a template, with a title on top.
+ */
+
+/** Layouts the picked frames can be arranged in. `single` uses the first frame. */
+export const THUMBNAIL_TEMPLATES = [
+  {
+    id: "mosaic",
+    label: "Mosaic",
+    hint: "Every picked frame, tiled edge-to-edge as the background",
+  },
+  {
+    id: "stripes-horizontal",
+    label: "Horizontal stripes",
+    hint: "Full-width bands, stacked top to bottom",
+  },
+  {
+    id: "stripes-vertical",
+    label: "Vertical stripes",
+    hint: "Full-height columns, left to right",
+  },
+  { id: "single", label: "Single frame", hint: "Just the first picked frame, full bleed" },
+] as const;
+export type ThumbnailTemplate = (typeof THUMBNAIL_TEMPLATES)[number]["id"];
+
+/** Output sizes, expressed as the short side (the aspect ratio sets the rest). */
+export const THUMBNAIL_SIZES = [
+  { id: "720", label: "720p", shortSide: 720 },
+  { id: "1080", label: "1080p", shortSide: 1080 },
+  { id: "1440", label: "1440p", shortSide: 1440 },
+  { id: "2160", label: "4K", shortSide: 2160 },
+] as const;
+export type ThumbnailSize = (typeof THUMBNAIL_SIZES)[number]["id"];
+
+/** Encoders the export can target. Availability is probed at runtime (FFmpeg build). */
+export const IMAGE_FORMATS = [
+  { id: "png", label: "PNG", ext: "png", hint: "lossless, largest", lossless: true },
+  { id: "jpeg", label: "JPEG", ext: "jpg", hint: "plays everywhere", lossless: false },
+  { id: "webp", label: "WebP", ext: "webp", hint: "smaller, modern", lossless: false },
+  { id: "avif", label: "AVIF", ext: "avif", hint: "smallest, newest", lossless: false },
+] as const;
+export type ImageFormat = (typeof IMAGE_FORMATS)[number]["id"];
+
+/** One frame picked off the source timeline, in click order. */
+export type ThumbnailFrame = {
+  id: string;
+  assetId: string;
+  /** Timestamp within the asset. */
+  atSec: number;
+  /** Framing (pan/zoom) within the tile the template gives it. */
+  transform: ClipTransform;
+};
+
+/** The heading + description drawn over the thumbnail background. */
+export type ThumbnailTextConfig = {
+  enabled: boolean;
+  /** Heading line. */
+  text: string;
+  /** Optional longer line below the heading. */
+  description: string;
+  fontFamily: string;
+  /** CSS font weight for the heading (400–800). */
+  headingWeight: number;
+  fontSizePx: number;
+  color: string;
+  align: Align;
+  vAlign: VAlign;
+  shadowEnabled: boolean;
+  shadowIntensity: number;
+  shadowX: number;
+  shadowY: number;
+};
+
+export type ThumbnailConfig = {
+  template: ThumbnailTemplate;
+  /** Independent of the trailer's — a 9:16 trailer can still have a 16:9 thumbnail. */
+  aspectRatio: AspectRatio;
+  /** Frames picked off the source timeline, in click order. */
+  frames: ThumbnailFrame[];
+  /** Dark scrim over the background, 0..1 — keeps the title readable. */
+  scrim: number;
+  title: ThumbnailTextConfig;
+};
+
+/** Whether the title should render (enabled + has heading or description). */
+export function thumbnailTextActive(t: ThumbnailTextConfig): boolean {
+  return t.enabled && (t.text.trim() !== "" || t.description.trim() !== "");
+}
+
+export const defaultThumbnailText = (): ThumbnailTextConfig => ({
+  enabled: true,
+  text: "",
+  description: "",
+  fontFamily: "Avenir Next",
+  headingWeight: 800,
+  fontSizePx: 96,
+  color: "#ffffff",
+  align: "center",
+  vAlign: "middle",
+  shadowEnabled: true,
+  shadowIntensity: 0.55,
+  shadowX: 2,
+  shadowY: 2,
+});
+
+export const defaultThumbnail = (): ThumbnailConfig => ({
+  template: "mosaic",
+  aspectRatio: "16:9",
+  frames: [],
+  scrim: 0.25,
+  title: defaultThumbnailText(),
+});
 
 export const DEFAULT_CLIP_LENGTH_SEC = 3;
 
@@ -278,4 +424,5 @@ export const emptyProject = (): Project => ({
     aspectRatio: "16:9",
     fitMode: "cover",
   },
+  thumbnail: defaultThumbnail(),
 });

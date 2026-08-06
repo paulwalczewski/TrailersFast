@@ -8,6 +8,9 @@ import {
   type IntroConfig,
   type Project,
   type Settings,
+  type ThumbnailConfig,
+  type ThumbnailFrame,
+  type ThumbnailTextConfig,
   type WatermarkConfig,
   centeredClip,
   clampClipResize,
@@ -26,11 +29,26 @@ type AssetInput = Omit<
 >;
 type AssetProbe = Pick<Asset, "durationSec" | "width" | "height" | "fps" | "hasAudio">;
 /** The `Project` fields tracked for undo/redo — the single source of truth. */
-const HISTORY_KEYS = ["assets", "markers", "intro", "outro", "watermark", "settings"] as const;
+const HISTORY_KEYS = [
+  "assets",
+  "markers",
+  "intro",
+  "outro",
+  "watermark",
+  "settings",
+  "thumbnail",
+] as const;
 /** The editable document tracked for undo/redo. */
 type HistoryDoc = Pick<Project, (typeof HISTORY_KEYS)[number]>;
 
+/** Which editor the window shows. The two share assets, nothing else. */
+export type EditorMode = "trailer" | "thumbnail";
+
 export type TrailerStore = Project & {
+  /** UI mode, not part of the document (never recorded in undo history). */
+  mode: EditorMode;
+  setMode: (mode: EditorMode) => void;
+
   // Assets
   addAssets: (assets: AssetInput[]) => void;
   /** Add a placeholder asset immediately (loading), returning its id. */
@@ -65,6 +83,17 @@ export type TrailerStore = Project & {
   updateIntro: (patch: Partial<IntroConfig>) => void;
   updateOutro: (patch: Partial<IntroConfig>) => void;
   updateWatermark: (patch: Partial<WatermarkConfig>) => void;
+
+  // Thumbnail
+  updateThumbnail: (patch: Partial<Omit<ThumbnailConfig, "title" | "frames">>) => void;
+  updateThumbnailTitle: (patch: Partial<ThumbnailTextConfig>) => void;
+  /** Pick a frame off the source timeline; returns the new frame's id. */
+  addThumbnailFrame: (assetId: string, atSec: number) => string;
+  removeThumbnailFrame: (frameId: string) => void;
+  /** Replace the whole picked-frame list (e.g. "use the trailer's clips"). */
+  setThumbnailFrames: (frames: { assetId: string; atSec: number }[]) => void;
+  /** Adjust one frame's framing (pan/zoom) within its tile. */
+  setThumbnailFrameTransform: (frameId: string, patch: Partial<ClipTransform>) => void;
 
   // Preview proxies (key -> proxy file path), see core `proxyKey`.
   proxies: Record<string, string>;
@@ -103,6 +132,11 @@ const changedFields = (a: HistoryDoc, b: HistoryDoc): string[] =>
       ? a.assets !== b.assets && assetSig(a.assets) !== assetSig(b.assets)
       : a[k] !== b[k],
   );
+/** Drop the thumbnail frames picked from an asset that's leaving the timeline. */
+const withoutAssetFrames = (t: ThumbnailConfig, assetId: string): ThumbnailConfig =>
+  t.frames.some((f) => f.assetId === assetId)
+    ? { ...t, frames: t.frames.filter((f) => f.assetId !== assetId) }
+    : t;
 /** Append `snapshot` to the undo stack (bounded) and drop the redo stack. */
 const pushPast = (s: { past: HistoryDoc[] }, snapshot: HistoryDoc) => ({
   past: [...s.past, snapshot].slice(-HISTORY_LIMIT),
@@ -115,6 +149,9 @@ export const useTrailerStore = create<TrailerStore>()(
   ...emptyProject(),
   proxies: {},
   lastExportPath: "",
+
+  mode: "trailer",
+  setMode: (mode) => set({ mode }),
 
   setProxy: (key, path) => set((s) => ({ proxies: { ...s.proxies, [key]: path } })),
   setLastExportPath: (path) => set({ lastExportPath: path }),
@@ -199,18 +236,22 @@ export const useTrailerStore = create<TrailerStore>()(
     })),
 
   toggleAssetSelected: (assetId) =>
-    set((s) => ({
-      assets: s.assets.map((a) => (a.id === assetId ? { ...a, selected: !a.selected } : a)),
-      // Dropping an asset from the selection also drops its markers.
-      markers: s.assets.find((a) => a.id === assetId)?.selected
-        ? s.markers.filter((m) => m.assetId !== assetId)
-        : s.markers,
-    })),
+    set((s) => {
+      const deselecting = s.assets.find((a) => a.id === assetId)?.selected === true;
+      return {
+        assets: s.assets.map((a) => (a.id === assetId ? { ...a, selected: !a.selected } : a)),
+        // Dropping an asset from the selection also drops its markers and the
+        // thumbnail frames picked from it — both live on the source timeline.
+        markers: deselecting ? s.markers.filter((m) => m.assetId !== assetId) : s.markers,
+        thumbnail: deselecting ? withoutAssetFrames(s.thumbnail, assetId) : s.thumbnail,
+      };
+    }),
 
   removeAsset: (assetId) =>
     set((s) => ({
       assets: s.assets.filter((a) => a.id !== assetId),
       markers: s.markers.filter((m) => m.assetId !== assetId),
+      thumbnail: withoutAssetFrames(s.thumbnail, assetId),
     })),
 
   setDefaultClipLength: (sec) =>
@@ -291,6 +332,45 @@ export const useTrailerStore = create<TrailerStore>()(
   updateOutro: (patch) => set((s) => ({ outro: { ...s.outro, ...patch } })),
 
   updateWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
+
+  updateThumbnail: (patch) => set((s) => ({ thumbnail: { ...s.thumbnail, ...patch } })),
+
+  updateThumbnailTitle: (patch) =>
+    set((s) => ({ thumbnail: { ...s.thumbnail, title: { ...s.thumbnail.title, ...patch } } })),
+
+  addThumbnailFrame: (assetId, atSec) => {
+    const id = uid("frame");
+    set((s) => ({
+      thumbnail: {
+        ...s.thumbnail,
+        frames: [...s.thumbnail.frames, { id, assetId, atSec, transform: defaultTransform() }],
+      },
+    }));
+    return id;
+  },
+
+  removeThumbnailFrame: (frameId) =>
+    set((s) => ({
+      thumbnail: { ...s.thumbnail, frames: s.thumbnail.frames.filter((f) => f.id !== frameId) },
+    })),
+
+  setThumbnailFrames: (frames) =>
+    set((s) => ({
+      thumbnail: {
+        ...s.thumbnail,
+        frames: frames.map((f) => ({ ...f, id: uid("frame"), transform: defaultTransform() })),
+      },
+    })),
+
+  setThumbnailFrameTransform: (frameId, patch) =>
+    set((s) => ({
+      thumbnail: {
+        ...s.thumbnail,
+        frames: s.thumbnail.frames.map((f) =>
+          f.id === frameId ? { ...f, transform: { ...f.transform, ...patch } } : f,
+        ),
+      },
+    })),
     }),
     {
       name: "trailerfast",
@@ -301,6 +381,8 @@ export const useTrailerStore = create<TrailerStore>()(
         intro: s.intro,
         outro: s.outro,
         watermark: s.watermark,
+        // Frames point at session-only assets — keep the styling, drop the picks.
+        thumbnail: { ...s.thumbnail, frames: [] },
         lastExportPath: s.lastExportPath,
       }),
       // Deep-merge so fields added in newer versions keep their defaults.
@@ -317,6 +399,12 @@ export const useTrailerStore = create<TrailerStore>()(
           intro: { ...current.intro, ...(p.intro ?? {}) },
           outro: { ...current.outro, ...(p.outro ?? {}) },
           watermark: { ...current.watermark, ...(p.watermark ?? {}) },
+          thumbnail: {
+            ...current.thumbnail,
+            ...(p.thumbnail ?? {}),
+            frames: [],
+            title: { ...current.thumbnail.title, ...(p.thumbnail?.title ?? {}) },
+          },
           lastExportPath: p.lastExportPath ?? current.lastExportPath,
         };
       },
@@ -333,6 +421,9 @@ let lastKind = "";
 /** Marker signature ignoring per-clip transforms (pan/zoom slider drags). */
 const markerSig = (markers: ClipMarker[]) =>
   markers.map((m) => `${m.id}:${m.order}:${m.startSec}:${m.lengthSec}`).join(",");
+/** Thumbnail-frame signature ignoring per-frame transforms (same reason). */
+const frameSig = (frames: ThumbnailFrame[]) =>
+  frames.map((f) => `${f.id}:${f.assetId}:${f.atSec}`).join(",");
 useTrailerStore.subscribe((state, prev) => {
   if (timeTraveling || suppressHistory) return;
   const fields = changedFields(state, prev);
@@ -342,12 +433,23 @@ useTrailerStore.subscribe((state, prev) => {
   if (kind === "markers" && markerSig(state.markers) === markerSig(prev.markers)) {
     kind = "markerTransform";
   }
+  // Picking/dropping thumbnail frames is a discrete click — never coalesce it
+  // with the typing/slider edits that share the `thumbnail` field. A frames
+  // change that only touched transforms IS a drag, so it coalesces.
+  if (kind === "thumbnail" && state.thumbnail.frames !== prev.thumbnail.frames) {
+    kind =
+      frameSig(state.thumbnail.frames) === frameSig(prev.thumbnail.frames)
+        ? "thumbnailFrameTransform"
+        : "thumbnailFrames";
+  }
   const now = Date.now();
   const coalescible =
     kind === "intro" ||
     kind === "outro" ||
     kind === "watermark" ||
     kind === "settings" ||
+    kind === "thumbnail" ||
+    kind === "thumbnailFrameTransform" ||
     kind === "markerTransform";
   const coalesce = coalescible && kind === lastKind && now - lastRecordAt < 700 && state.future.length === 0;
   lastRecordAt = now;
