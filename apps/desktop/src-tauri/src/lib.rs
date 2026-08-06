@@ -24,8 +24,16 @@ struct MediaInfo {
 }
 
 /// Idempotent: downloads FFmpeg on first use, then a no-op. Blocks on first run.
-fn ensure_ffmpeg() -> Result<(), String> {
-    auto_download().map_err(|e| format!("failed to obtain ffmpeg: {e}"))
+/// Success is memoized — even the "already installed" check spawns an
+/// `ffmpeg -version` subprocess, which would otherwise run per extracted frame.
+pub(crate) fn ensure_ffmpeg() -> Result<(), String> {
+    static READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if READY.get().is_some() {
+        return Ok(());
+    }
+    auto_download().map_err(|e| format!("failed to obtain ffmpeg: {e}"))?;
+    let _ = READY.set(());
+    Ok(())
 }
 
 /// Spawn a fire-and-forget FFmpeg command and block until it finishes writing.
@@ -38,7 +46,7 @@ fn run_to_completion(mut cmd: FfmpegCommand) -> Result<(), String> {
 /// Run a blocking media task on the FFmpeg thread pool. Sync commands run on
 /// the main thread in Tauri, so anything that spawns FFmpeg must hop off it or
 /// the whole window (rendering + input) freezes for the duration.
-async fn off_main_thread<T: Send + 'static>(
+pub(crate) async fn off_main_thread<T: Send + 'static>(
     task: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(task)

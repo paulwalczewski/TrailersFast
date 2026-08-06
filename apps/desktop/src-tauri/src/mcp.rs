@@ -86,6 +86,49 @@ impl McpBridge {
 }
 
 // ---------------------------------------------------------------------------
+// Connected-client tracking (drives the "AI connected" UI state)
+// ---------------------------------------------------------------------------
+
+static CLIENT_COUNT: AtomicU64 = AtomicU64::new(0);
+
+fn client_count() -> u64 {
+    CLIENT_COUNT.load(Ordering::Relaxed)
+}
+
+/// One per MCP session: rmcp builds a server instance per client session and
+/// drops it when the session ends, so this guard's lifetime IS the session.
+/// (TrailerMcp is Clone — the Arc ensures we count sessions, not clones.)
+struct SessionGuard {
+    app: AppHandle,
+}
+
+impl SessionGuard {
+    fn new(app: AppHandle) -> Self {
+        let n = CLIENT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = app.emit("mcp:clients", n);
+        Self { app }
+    }
+}
+
+impl Drop for SessionGuard {
+    fn drop(&mut self) {
+        // Floor at 0: guards may still drop after a server stop already reset
+        // the count, and a plain fetch_sub would wrap the unsigned counter.
+        let _ = CLIENT_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            Some(n.saturating_sub(1))
+        });
+        let _ = self.app.emit("mcp:clients", client_count());
+    }
+}
+
+/// Hard-reset on server stop: every session died with the server, including
+/// any stale one whose client vanished without closing it.
+fn reset_clients(app: &AppHandle) {
+    CLIENT_COUNT.store(0, Ordering::Relaxed);
+    let _ = app.emit("mcp:clients", 0u64);
+}
+
+// ---------------------------------------------------------------------------
 // Tauri-managed state + commands used by the frontend
 // ---------------------------------------------------------------------------
 
@@ -142,6 +185,8 @@ pub struct McpStatus {
     port: u16,
     url: String,
     token: String,
+    /// Currently connected MCP client sessions.
+    clients: u64,
 }
 
 #[tauri::command]
@@ -153,25 +198,34 @@ pub fn mcp_status(state: tauri::State<McpState>) -> McpStatus {
         port,
         url: format!("http://127.0.0.1:{port}/mcp"),
         token: state.token.clone(),
+        clients: client_count(),
     }
 }
 
 /// Toggle the MCP server. Off = the localhost listener stops entirely.
 /// Deliberately a Tauri command (user-only), not an MCP tool — an agent must
 /// not be able to keep itself connected against the user's wishes.
+/// Resolves after the port is actually bound, so the returned status is final.
 #[tauri::command]
-pub fn mcp_set_enabled(
+pub async fn mcp_set_enabled(
     app: AppHandle,
-    state: tauri::State<McpState>,
+    state: tauri::State<'_, McpState>,
     enabled: bool,
-) -> McpStatus {
+) -> Result<McpStatus, String> {
     if enabled {
         state.start();
+        // start() binds asynchronously; wait (bounded) until the port is up.
+        for _ in 0..80 {
+            if state.port.load(Ordering::Relaxed) != 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
     } else {
         state.stop();
     }
     store_enabled(&app, enabled);
-    mcp_status(state)
+    Ok(mcp_status(state))
 }
 
 /// Persisted toggle state, default on.
@@ -308,6 +362,9 @@ pub struct UpdateWatermarkParams {
     /// Corner: "top-left", "top-right", "bottom-left" or "bottom-right".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<String>,
+    /// Font family, e.g. "Avenir Next", "Helvetica Neue", "Futura", "Inter".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
     /// Size in canvas pixels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_size_px: Option<u32>,
@@ -415,6 +472,7 @@ pub struct ExportTrailerParams {
 #[derive(Clone)]
 pub struct TrailerMcp {
     bridge: Arc<McpBridge>,
+    _session: Arc<SessionGuard>,
 }
 
 fn tool_err(msg: String) -> McpError {
@@ -423,7 +481,8 @@ fn tool_err(msg: String) -> McpError {
 
 impl TrailerMcp {
     pub fn new(bridge: Arc<McpBridge>) -> Self {
-        Self { bridge }
+        let session = Arc::new(SessionGuard::new(bridge.app.clone()));
+        Self { bridge, _session: session }
     }
 
     /// Forward a tool call to the webview and wrap its JSON reply.
@@ -460,10 +519,8 @@ async fn blocking<T: Send + 'static>(
     limit: Duration,
     task: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, McpError> {
-    let fut = tauri::async_runtime::spawn_blocking(task);
-    match tokio::time::timeout(limit, fut).await {
-        Ok(Ok(result)) => result.map_err(tool_err),
-        Ok(Err(join)) => Err(tool_err(join.to_string())),
+    match tokio::time::timeout(limit, crate::off_main_thread(task)).await {
+        Ok(result) => result.map_err(tool_err),
         Err(_) => Err(tool_err(format!("analysis timed out after {}s", limit.as_secs()))),
     }
 }
@@ -582,7 +639,7 @@ impl TrailerMcp {
                 .await?;
 
         // Keep the strongest cuts when over budget, but report chronologically.
-        let mut kept: Vec<_> = scenes.iter().copied().collect();
+        let mut kept = scenes;
         let total = kept.len();
         if kept.len() > max_scenes {
             kept.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -619,16 +676,25 @@ impl TrailerMcp {
             .map(|t| t.clamp(0.0, (duration_sec - 0.05).max(0.0)))
             .collect();
 
-        let frames = blocking(Duration::from_secs(120), {
-            let times = times.clone();
-            move || {
-                times
-                    .iter()
-                    .map(|t| crate::extract_frame_jpeg(&path, *t, width))
-                    .collect::<Result<Vec<_>, _>>()
+        // Each extraction is an independent FFmpeg seek — run them concurrently
+        // (order preserved by joining in spawn order).
+        let handles: Vec<_> = times
+            .iter()
+            .map(|t| {
+                let (path, t) = (path.clone(), *t);
+                tauri::async_runtime::spawn_blocking(move || crate::extract_frame_jpeg(&path, t, width))
+            })
+            .collect();
+        let frames = tokio::time::timeout(Duration::from_secs(120), async {
+            let mut out = Vec::with_capacity(handles.len());
+            for h in handles {
+                out.push(h.await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?);
             }
+            Ok::<_, String>(out)
         })
-        .await?;
+        .await
+        .map_err(|_| tool_err("frame extraction timed out after 120s".into()))?
+        .map_err(tool_err)?;
 
         let labels = times.iter().map(|t| format!("{t:.2}s")).collect::<Vec<_>>().join(", ");
         let mut content = vec![ContentBlock::text(format!("Frames at {labels} (in order):"))];
@@ -706,6 +772,7 @@ async fn serve(
         return;
     };
 
+    let app = bridge.app.clone();
     // The cancel token tears down open sessions (SSE streams) on shutdown —
     // without it, graceful shutdown would wait on idle streams forever.
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -750,4 +817,5 @@ async fn serve(
         log::info!("MCP server stopped (disabled)");
     }
     port_out.store(0, Ordering::Relaxed);
+    reset_clients(&app);
 }

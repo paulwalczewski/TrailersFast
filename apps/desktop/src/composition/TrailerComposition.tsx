@@ -1,4 +1,10 @@
-import { type ClipTransform, type FitMode, clipRenderBox, filmstripFrameAt } from "@trailerfast/core";
+import {
+  type ClipTransform,
+  type FitMode,
+  clipRenderBox,
+  filmstripFrameAt,
+  totalFrames,
+} from "@trailerfast/core";
 import { useMemo } from "react";
 import {
   AbsoluteFill,
@@ -120,7 +126,7 @@ export function TrailerComposition({
   flipHorizontal,
   fitMode,
 }: TrailerCompositionProps) {
-  const clipFrames = clips.reduce((n, c) => n + c.durationInFrames, 0);
+  const clipFrames = totalFrames(clips);
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
       <Series>

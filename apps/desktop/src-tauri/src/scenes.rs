@@ -5,7 +5,7 @@
 //! (path, threshold) for the app session — detection decodes the whole file.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
@@ -20,7 +20,7 @@ pub struct Scene {
     pub score: f64,
 }
 
-type Cache = Mutex<HashMap<(String, u32), Arc<Vec<Scene>>>>;
+type Cache = Mutex<HashMap<(String, u32), Vec<Scene>>>;
 
 fn cache() -> &'static Cache {
     static CACHE: OnceLock<Cache> = OnceLock::new();
@@ -28,12 +28,14 @@ fn cache() -> &'static Cache {
 }
 
 /// Detect scene changes in `path` with the given select threshold (0..1).
-/// Returns cuts in chronological order; blocking (run off the async runtime).
-pub fn detect_scenes_blocking(path: &str, threshold: f64) -> Result<Arc<Vec<Scene>>, String> {
+/// Returns cuts in chronological order (`Scene` is `Copy`; lists are small,
+/// so cache hits just clone). Blocking — run off the async runtime.
+pub fn detect_scenes_blocking(path: &str, threshold: f64) -> Result<Vec<Scene>, String> {
     let key = (path.to_string(), (threshold * 100.0).round() as u32);
     if let Some(hit) = cache().lock().unwrap().get(&key) {
         return Ok(hit.clone());
     }
+    crate::ensure_ffmpeg()?;
 
     // Downscale before scoring: scene detection compares frame deltas, which
     // survives 320px just fine and decodes several times faster than full-res.
@@ -65,7 +67,6 @@ pub fn detect_scenes_blocking(path: &str, threshold: f64) -> Result<Arc<Vec<Scen
         }
     }
 
-    let scenes = Arc::new(scenes);
     cache().lock().unwrap().insert(key, scenes.clone());
     Ok(scenes)
 }

@@ -8,7 +8,7 @@
  */
 import { type ClipTransform, type FitMode, MAX_CLIP_ZOOM } from "./model";
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
  * The rectangle the scaled clip occupies, in canvas coordinates (the canvas

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { Switch } from "@heroui/react";
+import { useEffect, useMemo, useState } from "react";
 import { isTauri } from "../engine";
-import { useMcpActivity } from "../mcp/activity";
+import { useAgentBeacon, useMcpActivity } from "../mcp/activity";
 import { ModalShell } from "../ui/ModalShell";
+import { Spinner } from "../ui/Spinner";
 
 type McpStatus = {
   enabled: boolean;
@@ -9,6 +11,7 @@ type McpStatus = {
   port: number;
   url: string;
   token: string;
+  clients: number;
 };
 
 type SnippetBlock = { title: string; hint: string; text: string };
@@ -127,6 +130,9 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState("claude");
   const entries = useMcpActivity((s) => s.entries);
   const clearActivity = useMcpActivity((s) => s.clear);
+  const working = useAgentBeacon();
+  // Kept current by server events (seeded from mcp_status by the bridge hook).
+  const clients = useMcpActivity((s) => s.clients);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -144,16 +150,16 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
 
   async function setEnabled(enabled: boolean) {
     const { invoke } = await import("@tauri-apps/api/core");
+    // The command resolves only after the server has bound (or stopped).
     setStatus(await invoke<McpStatus>("mcp_set_enabled", { enabled }));
-    // Binding the port happens right after enabling — refresh once it settled.
-    if (enabled) {
-      setTimeout(async () => {
-        setStatus(await invoke<McpStatus>("mcp_status"));
-      }, 400);
-    }
   }
 
-  const tabs = status?.running ? providerTabs(status.url, status.token) : [];
+  // Rebuilt only when the connection details change — NOT on every activity
+  // entry (the modal re-renders per tool call while an agent is working).
+  const tabs = useMemo(
+    () => (status?.running ? providerTabs(status.url, status.token) : []),
+    [status?.running, status?.url, status?.token],
+  );
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
 
   return (
@@ -162,7 +168,15 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
       className="flex max-h-[85vh] w-[640px] max-w-full flex-col rounded-2xl bg-surface p-5 shadow-xl"
     >
       <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">AI integration</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">AI integration</h2>
+          {working ? (
+            <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">
+              <Spinner className="size-3 border-success border-t-transparent" />
+              Agent working…
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -195,28 +209,30 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
               {status.running ? (
                 <span>
                   MCP server running on <code className="text-xs">{status.url}</code>
+                  {clients > 0 ? (
+                    <span className="text-success">
+                      {" "}
+                      · {clients} agent{clients > 1 ? "s" : ""} connected
+                    </span>
+                  ) : null}
                 </span>
               ) : status.enabled ? (
                 <span>MCP server is starting…</span>
               ) : (
                 <span>MCP server is off — AI agents can't connect.</span>
               )}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={status.enabled}
+              <Switch
+                isSelected={status.enabled}
+                onChange={setEnabled}
                 aria-label="Enable MCP server"
-                onClick={() => setEnabled(!status.enabled)}
-                className={`ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
-                  status.enabled ? "bg-accent" : "bg-surface-tertiary"
-                }`}
+                className="ml-auto"
               >
-                <span
-                  className={`size-4 rounded-full bg-white shadow transition-transform ${
-                    status.enabled ? "translate-x-4" : ""
-                  }`}
-                />
-              </button>
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
             </div>
 
             {active ? (

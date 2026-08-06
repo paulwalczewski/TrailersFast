@@ -3,6 +3,7 @@ import {
   MAX_CLIP_ZOOM,
   byId,
   canvasFor,
+  clamp,
   clipRenderBox,
   defaultTransform,
   filmstripFrameAt,
@@ -13,6 +14,7 @@ import { useTrailerStore } from "@trailerfast/state";
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { engine } from "../engine";
 import { clipBoxStyle, useMediaReady } from "../ui/clipMedia";
+import { Icon } from "../ui/Icon";
 import { LabeledSlider } from "../ui/Fields";
 import { ModalShell } from "../ui/ModalShell";
 
@@ -89,7 +91,6 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
       asset.durationSec,
     ) ?? asset.posterUrl;
 
-  const clamp = (v: number) => Math.min(1, Math.max(-1, v));
   const pannable = pan.x > 0 || pan.y > 0;
 
   function onPanDown(e: PointerEvent<HTMLDivElement>) {
@@ -109,8 +110,10 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
     // Pointer px → canvas units → normalized offset (drag right = content follows).
     const pxToCanvas = canvas.width / el.clientWidth;
     const patch: { offsetX?: number; offsetY?: number } = {};
-    if (pan.x > 0) patch.offsetX = clamp(start.offsetX - ((e.clientX - start.x) * pxToCanvas) / pan.x);
-    if (pan.y > 0) patch.offsetY = clamp(start.offsetY - ((e.clientY - start.y) * pxToCanvas) / pan.y);
+    if (pan.x > 0)
+      patch.offsetX = clamp(start.offsetX - ((e.clientX - start.x) * pxToCanvas) / pan.x, -1, 1);
+    if (pan.y > 0)
+      patch.offsetY = clamp(start.offsetY - ((e.clientY - start.y) * pxToCanvas) / pan.y, -1, 1);
     if (Object.keys(patch).length) setMarkerTransform(markerId, patch);
   }
   function onPanUp() {
@@ -165,20 +168,10 @@ export function ClipTransformModal({ markerId, onClose }: { markerId: string; on
         />
         {pannable && !hintDismissed ? (
           <span className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded bg-black/55 px-2 py-0.5 text-[11px] text-white/90">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
+            <Icon size={12}>
               <path d="M12 2v20M2 12h20" />
               <path d="m9 5 3-3 3 3M9 19l3 3 3-3M5 9 2 12l3 3M19 9l3 3-3 3" />
-            </svg>
+            </Icon>
             Drag to reposition
           </span>
         ) : null}
