@@ -2,6 +2,45 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+/* Bundled decorative / hand-written fonts (OFL & Apache-2.0, from Google Fonts).
+   Embedded so the preview, thumbnail canvas and FFmpeg export all render them
+   identically on any OS — see apps/desktop/src/assets/fonts/. */
+@font-face {
+  font-family: "Pacifico";
+  src: url("./assets/fonts/Pacifico-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Permanent Marker";
+  src: url("./assets/fonts/PermanentMarker-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Great Vibes";
+  src: url("./assets/fonts/GreatVibes-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Lobster";
+  src: url("./assets/fonts/Lobster-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Bangers";
+  src: url("./assets/fonts/Bangers-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Sacramento";
+  src: url("./assets/fonts/Sacramento-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Kalam";
+  src: url("./assets/fonts/Kalam-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
 /* Trailers Fast — light blue & white light theme.
    Overrides HeroUI's default light-mode oklch tokens. */
 :root,

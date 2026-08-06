@@ -4,6 +4,7 @@ import { AiButton } from "./panels/AiButton";
 import { AiIntegrationModal } from "./panels/AiIntegrationModal";
 import { ExportBar } from "./panels/ExportBar";
 import { Logo } from "./panels/Logo";
+import { ModeTabs } from "./panels/ModeTabs";
 import { OnboardingOverlay } from "./panels/OnboardingOverlay";
 import { Sidebar } from "./panels/Sidebar";
 import { UndoRedoButtons } from "./panels/UndoRedoButtons";
@@ -16,7 +17,9 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-separator px-4">
+      {/* Three columns so the mode tabs stay centered in the window regardless
+          of how wide the logo / export sides get. */}
+      <header className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-separator px-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1">
             <Logo />
@@ -25,7 +28,8 @@ export function App() {
           <div className="h-5 w-px bg-separator" />
           <UndoRedoButtons />
         </div>
-        <div className="flex items-center gap-3">
+        <ModeTabs />
+        <div className="flex items-center justify-end gap-3">
           <AiButton onPress={() => setShowAi(true)} />
           <div className="mx-2 h-5 w-px bg-separator" />
           <ExportBar />

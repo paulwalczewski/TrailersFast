@@ -2,54 +2,48 @@ import { Button, Input, Label, TextField } from "@heroui/react";
 import {
   ALIGNMENTS,
   HEADING_WEIGHTS,
-  INTRO_ANIMATIONS,
   FONT_OPTIONS,
-  type IntroAnimation,
-  type IntroConfig,
-  TITLE_CARD_DURATION_RANGE,
-  TITLE_CARD_FONT_SIZE_RANGE,
+  THUMBNAIL_FONT_SIZE_RANGE,
   VALIGNS,
+  effectiveScrim,
+  thumbnailTextActive,
 } from "@trailerfast/core";
+import { useTrailerStore } from "@trailerfast/state";
 import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import { Section } from "../ui/Section";
 
-type Props = {
-  /** Lowercase card name for the enable switch, e.g. "intro" / "outro". */
-  name: string;
-  /** One-line explanation shown at the top. */
-  hint: string;
-  config: IntroConfig;
-  onChange: (patch: Partial<IntroConfig>) => void;
-};
+/** Heading + description drawn over the thumbnail background. */
+function TitleForm() {
+  const title = useTrailerStore((s) => s.thumbnail.title);
+  const update = useTrailerStore((s) => s.updateThumbnailTitle);
 
-/** Settings form for a title card (intro/outro) — same fields for both. */
-export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-xs text-muted">{hint}</p>
+      <p className="text-xs text-muted">Drawn on top of the template, centered by default.</p>
 
       <LabeledSwitch
-        label={`Enable ${name}`}
-        checked={config.enabled}
+        label="Show title"
+        checked={title.enabled}
         onChange={(v) => update({ enabled: v })}
       />
 
       <div
         className={
-          config.enabled ? "flex flex-col gap-4" : "pointer-events-none flex flex-col gap-4 opacity-50"
+          title.enabled ? "flex flex-col gap-4" : "pointer-events-none flex flex-col gap-4 opacity-50"
         }
-        aria-disabled={!config.enabled}
+        aria-disabled={!title.enabled}
       >
-        <TextField value={config.text} onChange={(v) => update({ text: v })}>
+        <TextField value={title.text} onChange={(v) => update({ text: v })}>
           <Label>Heading</Label>
-          <Input placeholder="Your trailer title" />
+          <Input placeholder="Your thumbnail headline" />
         </TextField>
 
         <div className="flex flex-col gap-1.5">
           <Label>Description</Label>
           <textarea
-            value={config.description}
+            value={title.description}
             onChange={(e) => update({ description: e.target.value })}
-            placeholder="A longer subtitle or tagline…"
+            placeholder="A shorter line below the heading…"
             rows={3}
             className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-accent"
           />
@@ -57,7 +51,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
 
         <LabeledSelect
           label="Font"
-          selectedKey={config.fontFamily}
+          selectedKey={title.fontFamily}
           options={FONT_OPTIONS}
           onChange={(id) => update({ fontFamily: id })}
           renderOption={(o) => <span style={{ fontFamily: o.id }}>{o.label}</span>}
@@ -65,7 +59,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
 
         <LabeledSelect
           label="Heading weight"
-          selectedKey={String(config.headingWeight)}
+          selectedKey={String(title.headingWeight)}
           options={HEADING_WEIGHTS}
           onChange={(id) => update({ headingWeight: Number(id) })}
           renderOption={(o) => <span style={{ fontWeight: Number(o.id) }}>{o.label}</span>}
@@ -73,29 +67,12 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
 
         <LabeledSlider
           label="Font size"
-          value={config.fontSizePx}
-          min={TITLE_CARD_FONT_SIZE_RANGE[0]}
-          max={TITLE_CARD_FONT_SIZE_RANGE[1]}
+          value={title.fontSizePx}
+          min={THUMBNAIL_FONT_SIZE_RANGE[0]}
+          max={THUMBNAIL_FONT_SIZE_RANGE[1]}
           step={2}
           onChange={(v) => update({ fontSizePx: v })}
           format={(v) => `${Math.round(v)}px`}
-        />
-
-        <LabeledSelect
-          label="Animation"
-          selectedKey={config.animation}
-          options={INTRO_ANIMATIONS}
-          onChange={(id) => update({ animation: id as IntroAnimation })}
-        />
-
-        <LabeledSlider
-          label="Length"
-          value={config.durationSec}
-          min={TITLE_CARD_DURATION_RANGE[0]}
-          max={TITLE_CARD_DURATION_RANGE[1]}
-          step={0.5}
-          onChange={(v) => update({ durationSec: v })}
-          format={(v) => `${v.toFixed(1)}s`}
         />
 
         <div className="flex flex-col gap-1.5">
@@ -104,7 +81,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
             {ALIGNMENTS.map((a) => (
               <Button
                 key={a}
-                variant={config.align === a ? "primary" : "outline"}
+                variant={title.align === a ? "primary" : "outline"}
                 onPress={() => update({ align: a })}
                 className="flex-1 capitalize"
               >
@@ -120,7 +97,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
             {VALIGNS.map((a) => (
               <Button
                 key={a}
-                variant={config.vAlign === a ? "primary" : "outline"}
+                variant={title.vAlign === a ? "primary" : "outline"}
                 onPress={() => update({ vAlign: a })}
                 className="flex-1 capitalize"
               >
@@ -130,18 +107,18 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
           </div>
         </div>
 
-        <LabeledColor label="Color" value={config.color} onChange={(v) => update({ color: v })} />
+        <LabeledColor label="Color" value={title.color} onChange={(v) => update({ color: v })} />
 
         <LabeledSwitch
           label="Text shadow"
-          checked={config.shadowEnabled}
+          checked={title.shadowEnabled}
           onChange={(v) => update({ shadowEnabled: v })}
         />
-        {config.shadowEnabled ? (
+        {title.shadowEnabled ? (
           <>
             <LabeledSlider
               label="Shadow intensity"
-              value={config.shadowIntensity}
+              value={title.shadowIntensity}
               min={0}
               max={1}
               step={0.05}
@@ -150,7 +127,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
             />
             <LabeledSlider
               label="Shadow X"
-              value={config.shadowX}
+              value={title.shadowX}
               min={-15}
               max={15}
               step={1}
@@ -159,7 +136,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
             />
             <LabeledSlider
               label="Shadow Y"
-              value={config.shadowY}
+              value={title.shadowY}
               min={-15}
               max={15}
               step={1}
@@ -169,6 +146,48 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
           </>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** Dim the frames behind the text so a busy mosaic doesn't swallow it. */
+function ScrimForm({ active }: { active: boolean }) {
+  const scrim = useTrailerStore((s) => s.thumbnail.scrim);
+  const update = useTrailerStore((s) => s.updateThumbnail);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted">
+        {active
+          ? "A black wash over the frames — raise it when the title fights a busy background."
+          : "Only applies while the thumbnail has a title. With no text there's nothing to dim for, so the frames show clean."}
+      </p>
+      <LabeledSlider
+        label="Dim background"
+        value={scrim}
+        min={0}
+        max={0.8}
+        step={0.05}
+        disabled={!active}
+        onChange={(v) => update({ scrim: v })}
+        format={(v) => `${Math.round(v * 100)}%`}
+      />
+    </div>
+  );
+}
+
+export function ThumbnailTextsTab() {
+  const thumbnail = useTrailerStore((s) => s.thumbnail);
+  const titleActive = thumbnailTextActive(thumbnail.title);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Section title="Title" enabled={titleActive} defaultOpen>
+        <TitleForm />
+      </Section>
+      <Section title="Background dim" enabled={effectiveScrim(thumbnail) > 0}>
+        <ScrimForm active={titleActive} />
+      </Section>
     </div>
   );
 }

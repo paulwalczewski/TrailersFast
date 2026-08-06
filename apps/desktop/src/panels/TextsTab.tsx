@@ -1,57 +1,15 @@
 import { Input, Label, TextField } from "@heroui/react";
 import {
-  INTRO_FONTS,
+  FONT_OPTIONS,
   WATERMARK_FONT_SIZE_RANGE,
   WATERMARK_OPACITY_RANGE,
   WATERMARK_POSITIONS,
   type WatermarkPosition,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type ReactNode, useState } from "react";
 import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
-import { Icon } from "../ui/Icon";
+import { Section } from "../ui/Section";
 import { TitleCardForm } from "./TitleCardForm";
-
-const WATERMARK_FONT_OPTIONS = INTRO_FONTS.map((f) => ({ id: f, label: f }));
-
-/** Collapsible section with an "On" badge when its feature is enabled. */
-function Section({
-  title,
-  enabled,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  enabled: boolean;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <div className="rounded-xl border border-separator bg-surface-secondary">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-tertiary"
-      >
-        <span className="text-sm font-semibold">{title}</span>
-        <span className="flex items-center gap-2">
-          {enabled ? (
-            <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success">
-              On
-            </span>
-          ) : null}
-          <Icon size={14} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}>
-            <path d="m6 9 6 6 6-6" />
-          </Icon>
-        </span>
-      </button>
-      {open ? <div className="border-t border-separator p-3">{children}</div> : null}
-    </div>
-  );
-}
 
 function WatermarkForm() {
   const wm = useTrailerStore((s) => s.watermark);
@@ -88,7 +46,7 @@ function WatermarkForm() {
         <LabeledSelect
           label="Font"
           selectedKey={wm.fontFamily}
-          options={WATERMARK_FONT_OPTIONS}
+          options={FONT_OPTIONS}
           onChange={(id) => update({ fontFamily: id })}
           renderOption={(o) => <span style={{ fontFamily: o.id }}>{o.label}</span>}
         />

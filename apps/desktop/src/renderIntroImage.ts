@@ -1,4 +1,5 @@
 import type { IntroConfig } from "@trailerfast/core";
+import { quoteFamily } from "./fonts";
 
 /**
  * Render the intro (heading + description) to a transparent PNG at the export
@@ -53,8 +54,4 @@ export function renderIntroImage(intro: IntroConfig, width: number, height: numb
   }
 
   return canvas.toDataURL("image/png").split(",")[1] ?? null;
-}
-
-function quoteFamily(f: string): string {
-  return `"${f.replace(/"/g, "")}", sans-serif`;
 }
