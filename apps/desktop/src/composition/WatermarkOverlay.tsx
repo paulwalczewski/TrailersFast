@@ -5,6 +5,7 @@ import { AbsoluteFill } from "remotion";
 export type WatermarkProps = {
   text: string;
   position: WatermarkPosition;
+  fontFamily: string;
   fontSizePx: number;
   color: string;
   opacity: number;
@@ -18,7 +19,14 @@ const POS: Record<WatermarkPosition, CSSProperties> = {
 };
 
 /** Text watermark shown across the whole trailer. */
-export function WatermarkOverlay({ text, position, fontSizePx, color, opacity }: WatermarkProps) {
+export function WatermarkOverlay({
+  text,
+  position,
+  fontFamily,
+  fontSizePx,
+  color,
+  opacity,
+}: WatermarkProps) {
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
       <div
@@ -27,6 +35,7 @@ export function WatermarkOverlay({ text, position, fontSizePx, color, opacity }:
           ...POS[position],
           color,
           opacity,
+          fontFamily,
           fontSize: fontSizePx,
           fontWeight: 700,
           textShadow: "0 1px 8px rgba(0,0,0,0.6)",

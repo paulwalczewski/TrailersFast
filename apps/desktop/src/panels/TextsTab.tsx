@@ -1,9 +1,18 @@
 import { Input, Label, TextField } from "@heroui/react";
-import { WATERMARK_POSITIONS, type WatermarkPosition } from "@trailerfast/core";
+import {
+  INTRO_FONTS,
+  WATERMARK_FONT_SIZE_RANGE,
+  WATERMARK_OPACITY_RANGE,
+  WATERMARK_POSITIONS,
+  type WatermarkPosition,
+} from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { type ReactNode, useState } from "react";
 import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import { Icon } from "../ui/Icon";
 import { TitleCardForm } from "./TitleCardForm";
+
+const WATERMARK_FONT_OPTIONS = INTRO_FONTS.map((f) => ({ id: f, label: f }));
 
 /** Collapsible section with an "On" badge when its feature is enabled. */
 function Section({
@@ -34,20 +43,9 @@ function Section({
               On
             </span>
           ) : null}
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}
-          >
+          <Icon size={14} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}>
             <path d="m6 9 6 6 6-6" />
-          </svg>
+          </Icon>
         </span>
       </button>
       {open ? <div className="border-t border-separator p-3">{children}</div> : null}
@@ -87,11 +85,19 @@ function WatermarkForm() {
           onChange={(id) => update({ position: id as WatermarkPosition })}
         />
 
+        <LabeledSelect
+          label="Font"
+          selectedKey={wm.fontFamily}
+          options={WATERMARK_FONT_OPTIONS}
+          onChange={(id) => update({ fontFamily: id })}
+          renderOption={(o) => <span style={{ fontFamily: o.id }}>{o.label}</span>}
+        />
+
         <LabeledSlider
           label="Size"
           value={wm.fontSizePx}
-          min={12}
-          max={96}
+          min={WATERMARK_FONT_SIZE_RANGE[0]}
+          max={WATERMARK_FONT_SIZE_RANGE[1]}
           step={2}
           onChange={(v) => update({ fontSizePx: v })}
           format={(v) => `${Math.round(v)}px`}
@@ -100,8 +106,8 @@ function WatermarkForm() {
         <LabeledSlider
           label="Opacity"
           value={wm.opacity}
-          min={0.1}
-          max={1}
+          min={WATERMARK_OPACITY_RANGE[0]}
+          max={WATERMARK_OPACITY_RANGE[1]}
           step={0.05}
           onChange={(v) => update({ opacity: v })}
           format={(v) => `${Math.round(v * 100)}%`}

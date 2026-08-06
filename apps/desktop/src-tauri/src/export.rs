@@ -49,6 +49,7 @@ pub struct ExportIntro {
 pub struct ExportWatermark {
     pub text: String,
     pub position: String,
+    pub font_family: String,
     pub font_size_px: u32,
     pub color: String,
     pub opacity: f64,
@@ -384,12 +385,47 @@ fn has_drawtext() -> bool {
     })
 }
 
+/// Append one title-card image overlay to the filter graph: fade out (and fade
+/// in when it starts mid-video), slide animation, bounded enable window. The
+/// image frames are timestamp-shifted to `t0` — without setpts the overlay
+/// would consume them at t=0 and only the faded-out last frame would remain by
+/// the time the enable window opens. Updates `cur` to the new video label.
+fn push_title_card(
+    fc: &mut String,
+    cur: &mut String,
+    card: &ExportIntro,
+    img_input: usize,
+    t0: f64,
+    tag: &str,
+) {
+    let d = card.duration_sec;
+    let e = (0.4_f64).min(d * 0.3).max(0.01);
+    let de = d - e;
+    // The intro (t0 = 0) is visible immediately; a card starting mid-video fades in.
+    let fade_in = if t0 > 0.0 {
+        format!("fade=t=in:st=0:d={e:.3}:alpha=1,")
+    } else {
+        String::new()
+    };
+    fc.push_str(&format!(
+        ";[{img_input}:v]{fade_in}fade=t=out:st={de:.3}:d={e:.3}:alpha=1,setpts=PTS+{t0:.3}/TB[{tag}f]"
+    ));
+    let t_rel = if t0 > 0.0 { format!("(t-{t0:.3})") } else { "t".to_string() };
+    let (ox, oy) = overlay_slide(&card.animation, e, de, &t_rel);
+    fc.push_str(&format!(
+        ";[{cur}][{tag}f]overlay=x='{ox}':y='{oy}':enable='between(t,{t0:.3},{:.3})'[{tag}v]",
+        t0 + d
+    ));
+    *cur = format!("{tag}v");
+}
+
 fn build_filter_complex(
     plan: &ExportPlan,
     silence_index: &std::collections::HashMap<usize, usize>,
     drawtext_font: Option<&str>,
     intro_img_input: Option<usize>,
     outro_img_input: Option<usize>,
+    total_sec: f64,
 ) -> (String, String) {
     let n = plan.clips.len();
     let (w, h, fps) = (plan.width, plan.height, plan.fps);
@@ -423,48 +459,27 @@ fn build_filter_complex(
     fc.push_str(&format!("concat=n={n}:v=1:a=1[cv][ca]"));
 
     let mut cur = "cv".to_string();
-    // Watermark: burned in with drawtext (needs freetype).
+    // Watermark: burned in with drawtext (needs freetype). Prefer the watermark's
+    // own font family, falling back to the shared overlay font when it can't be
+    // resolved to a file on this machine.
     if let (Some(font), Some(wm)) = (drawtext_font, &plan.watermark) {
-        fc.push_str(&format!(";[{cur}]{}[wv]", build_watermark(wm, font, w, h)));
+        let wm_font = find_font_for(&wm.font_family);
+        let wm_font = wm_font.as_deref().unwrap_or(font);
+        fc.push_str(&format!(";[{cur}]{}[wv]", build_watermark(wm, wm_font, w, h)));
         cur = "wv".to_string();
     }
     // Intro: prefer the pre-rendered image (supports emoji/fonts, any ffmpeg),
     // fading out at the end; fall back to drawtext when there's no image.
     if let (Some(idx), Some(intro)) = (intro_img_input, &plan.intro) {
-        let d = intro.duration_sec;
-        let e = (0.4_f64).min(d * 0.3).max(0.01);
-        let de = d - e;
-        fc.push_str(&format!(";[{idx}:v]fade=t=out:st={de:.3}:d={e:.3}:alpha=1[introf]"));
-        let (ox, oy) = overlay_slide(&intro.animation, e, de, "t");
-        fc.push_str(&format!(
-            ";[{cur}][introf]overlay=x='{ox}':y='{oy}':enable='between(t,0,{d:.3})'[outv]"
-        ));
-        cur = "outv".to_string();
+        push_title_card(&mut fc, &mut cur, intro, idx, 0.0, "intro");
     } else if let (Some(_), Some(intro)) = (drawtext_font, &plan.intro) {
         fc.push_str(&format!(";[{cur}]{}[outv]", build_intro_chain(intro, w, h)));
         cur = "outv".to_string();
     }
-    // Outro: the same image-overlay mechanics, shifted to the end of the
-    // trailer. setpts moves the image frames to start at T0 (otherwise the
-    // overlay would consume them at t=0 and only its faded-out last frame
-    // would remain by the time the enable window opens); fade in + out
-    // mirrors the preview's title-card animation.
+    // The plan builder already clamps card durations to the trailer length.
     if let (Some(idx), Some(outro)) = (outro_img_input, &plan.outro) {
-        let total: f64 = plan.clips.iter().map(|c| c.length_sec).sum();
-        let d = outro.duration_sec.min(total);
-        let e = (0.4_f64).min(d * 0.3).max(0.01);
-        let de = d - e;
-        let t0 = (total - d).max(0.0);
-        fc.push_str(&format!(
-            ";[{idx}:v]fade=t=in:st=0:d={e:.3}:alpha=1,fade=t=out:st={de:.3}:d={e:.3}:alpha=1,setpts=PTS+{t0:.3}/TB[outrof]"
-        ));
-        let t_rel = format!("(t-{t0:.3})");
-        let (ox, oy) = overlay_slide(&outro.animation, e, de, &t_rel);
-        fc.push_str(&format!(
-            ";[{cur}][outrof]overlay=x='{ox}':y='{oy}':enable='between(t,{t0:.3},{:.3})'[outrov]",
-            t0 + d
-        ));
-        cur = "outrov".to_string();
+        let t0 = (total_sec - outro.duration_sec).max(0.0);
+        push_title_card(&mut fc, &mut cur, outro, idx, t0, "outro");
     }
     (fc, format!("[{cur}]"))
 }
@@ -548,6 +563,7 @@ pub fn run_export_inner(
         drawtext_font.as_deref(),
         intro_img_input,
         outro_img_input,
+        total,
     );
 
     cmd.arg("-filter_complex")

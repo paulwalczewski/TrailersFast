@@ -19,9 +19,19 @@ export function useMcpBridge(): void {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
 
+    let unlistenClients: (() => void) | undefined;
     (async () => {
       const { listen } = await import("@tauri-apps/api/event");
       const { invoke } = await import("@tauri-apps/api/core");
+
+      const unClients = await listen<number>("mcp:clients", (event) => {
+        useMcpActivity.getState().setClients(event.payload);
+      });
+      if (cancelled) unClients();
+      else unlistenClients = unClients;
+      // Seed the count — an agent may have connected before this webview loaded.
+      const status = await invoke<{ clients: number }>("mcp_status");
+      if (!cancelled) useMcpActivity.getState().setClients(status.clients);
 
       const un = await listen<McpRequest>("mcp:request", (event) => {
         const { id, method, params } = event.payload;
@@ -48,6 +58,7 @@ export function useMcpBridge(): void {
     return () => {
       cancelled = true;
       unlisten?.();
+      unlistenClients?.();
     };
   }, [ingest]);
 }

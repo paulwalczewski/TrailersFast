@@ -91,6 +91,7 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
     return {
       text: watermark.text,
       position: watermark.position,
+      fontFamily: watermark.fontFamily,
       fontSizePx: watermark.fontSizePx,
       color: watermark.color,
       opacity: watermark.opacity,

@@ -82,6 +82,19 @@ export type ClipMarker = {
 
 export type IntroAnimation = "fade" | "slideLeft" | "slideUp" | "scale";
 
+/** Title-card text alignments — the UI buttons and MCP validation share these. */
+export const ALIGNMENTS = ["left", "center", "right"] as const;
+export const VALIGNS = ["top", "middle", "bottom"] as const;
+export type Align = (typeof ALIGNMENTS)[number];
+export type VAlign = (typeof VALIGNS)[number];
+
+/** Value ranges shared by the settings sliders and MCP input clamping. */
+export const TITLE_CARD_DURATION_RANGE = [1, 10] as const;
+export const TITLE_CARD_FONT_SIZE_RANGE = [20, 160] as const;
+export const WATERMARK_FONT_SIZE_RANGE = [12, 96] as const;
+export const WATERMARK_OPACITY_RANGE = [0.1, 1] as const;
+export const CLIP_LENGTH_RANGE = [1, 10] as const;
+
 export type IntroConfig = {
   enabled: boolean;
   /** Heading line. */
@@ -94,9 +107,9 @@ export type IntroConfig = {
   fontSizePx: number;
   color: string;
   /** Horizontal alignment. */
-  align: "left" | "center" | "right";
+  align: Align;
   /** Vertical alignment. */
-  vAlign: "top" | "middle" | "bottom";
+  vAlign: VAlign;
   animation: IntroAnimation;
   durationSec: number;
   /** Drop shadow behind the intro text. */
@@ -217,6 +230,7 @@ export type WatermarkConfig = {
   enabled: boolean;
   text: string;
   position: WatermarkPosition;
+  fontFamily: string;
   fontSizePx: number;
   color: string;
   /** 0..1 */
@@ -227,6 +241,7 @@ export const defaultWatermark = (): WatermarkConfig => ({
   enabled: false,
   text: "",
   position: "bottom-right",
+  fontFamily: "Avenir Next",
   fontSizePx: 32,
   color: "#ffffff",
   opacity: 0.8,
@@ -250,14 +265,12 @@ export const defaultIntro = (): IntroConfig => ({
   shadowY: 2,
 });
 
-/** Outros share the intro's config shape and defaults. */
-export const defaultOutro = (): IntroConfig => defaultIntro();
-
 export const emptyProject = (): Project => ({
   assets: [],
   markers: [],
   intro: defaultIntro(),
-  outro: defaultOutro(),
+  // Outros share the intro's config shape and defaults.
+  outro: defaultIntro(),
   watermark: defaultWatermark(),
   settings: {
     defaultClipLengthSec: DEFAULT_CLIP_LENGTH_SEC,

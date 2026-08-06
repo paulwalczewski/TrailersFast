@@ -89,6 +89,7 @@ export type ExportPlanIntro = {
 export type ExportPlanWatermark = {
   text: string;
   position: WatermarkPosition;
+  fontFamily: string;
   fontSizePx: number;
   color: string;
   opacity: number;
@@ -162,6 +163,7 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
     ? {
         text: wm.text,
         position: wm.position,
+        fontFamily: wm.fontFamily,
         fontSizePx: px(wm.fontSizePx),
         color: wm.color,
         opacity: wm.opacity,

@@ -1,24 +1,33 @@
 import {
+  ALIGNMENTS,
   ASPECT_RATIOS,
   type Asset,
+  CLIP_LENGTH_RANGE,
   type ClipMarker,
   EXPORT_PRESETS,
   FIT_MODES,
+  HEADING_WEIGHTS,
   INTRO_ANIMATIONS,
   MAX_CLIP_ZOOM,
-  MIN_CLIP_SEC,
+  TITLE_CARD_DURATION_RANGE,
+  TITLE_CARD_FONT_SIZE_RANGE,
+  VALIGNS,
+  WATERMARK_FONT_SIZE_RANGE,
+  WATERMARK_OPACITY_RANGE,
   WATERMARK_POSITIONS,
   byId,
+  clamp,
   orderedMarkers,
   trailerDuration,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
+import type { FileRef } from "@trailerfast/video-engine";
 import { performExport } from "../exportTrailer";
 import { type IngestOutcome, fileRefFromPath, isVideoPath } from "../useIngest";
 
 /** What the bridge hook injects: ingest lives in a React hook, not the store. */
 export type McpDeps = {
-  ingest: (files: ReturnType<typeof fileRefFromPath>[]) => Promise<IngestOutcome>[];
+  ingest: (files: FileRef[]) => Promise<IngestOutcome>[];
 };
 
 function fail(msg: string): never {
@@ -29,7 +38,7 @@ function oneOf(value: string, allowed: readonly string[], what: string): void {
   if (!allowed.includes(value)) fail(`${what} must be one of: ${allowed.join(", ")} (got "${value}")`);
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+const inRange = (v: number, [lo, hi]: readonly [number, number]) => clamp(v, lo, hi);
 
 function assetSummary(a: Asset) {
   return {
@@ -64,6 +73,15 @@ function getClip(clipId: string): ClipMarker {
   );
 }
 
+function getAsset(assetId: string, opts: { probed?: boolean } = {}): Asset {
+  const asset =
+    useTrailerStore.getState().assets.find((a) => a.id === assetId) ??
+    fail(`no asset with id "${assetId}" — call list_assets for current ids`);
+  if (opts.probed && (asset.loading || asset.durationSec <= 0))
+    fail(`asset "${asset.fileName}" is still being analyzed — retry in a moment`);
+  return asset;
+}
+
 /** Execute one MCP tool request against the live store. Throws on invalid input. */
 export async function handleMcpRequest(
   method: string,
@@ -95,18 +113,12 @@ export async function handleMcpRequest(
 
     // Internal: the Rust detect_scenes/get_frames tools need the file path.
     case "resolve_asset": {
-      const asset =
-        s().assets.find((a) => a.id === p.assetId) ??
-        fail(`no asset with id "${p.assetId}" — call list_assets for current ids`);
-      if (asset.loading || asset.durationSec <= 0)
-        fail(`asset "${asset.fileName}" is still being analyzed — retry in a moment`);
+      const asset = getAsset(p.assetId, { probed: true });
       return { path: asset.path, durationSec: asset.durationSec, fileName: asset.fileName };
     }
 
     case "remove_asset": {
-      const asset =
-        s().assets.find((a) => a.id === p.assetId) ??
-        fail(`no asset with id "${p.assetId}" — call list_assets for current ids`);
+      const asset = getAsset(p.assetId);
       s().removeAsset(asset.id);
       return { removed: asset.id, remainingAssets: s().assets.length };
     }
@@ -135,7 +147,7 @@ export async function handleMcpRequest(
         patch.fitMode = p.fitMode;
       }
       if (p.defaultClipLengthSec !== undefined) {
-        patch.defaultClipLengthSec = clamp(p.defaultClipLengthSec, MIN_CLIP_SEC, 60);
+        patch.defaultClipLengthSec = inRange(p.defaultClipLengthSec, CLIP_LENGTH_RANGE);
       }
       if (p.flipHorizontal !== undefined) patch.flipHorizontal = p.flipHorizontal;
       s().updateSettings(patch);
@@ -145,14 +157,16 @@ export async function handleMcpRequest(
     case "update_intro":
     case "update_outro": {
       const patch: Record<string, unknown> = { ...(p as object) };
-      if (p.align !== undefined) oneOf(p.align, ["left", "center", "right"], "align");
-      if (p.vAlign !== undefined) oneOf(p.vAlign, ["top", "middle", "bottom"], "vAlign");
+      if (p.align !== undefined) oneOf(p.align, ALIGNMENTS, "align");
+      if (p.vAlign !== undefined) oneOf(p.vAlign, VALIGNS, "vAlign");
       if (p.animation !== undefined)
         oneOf(p.animation, INTRO_ANIMATIONS.map((a) => a.id), "animation");
       if (p.headingWeight !== undefined)
-        patch.headingWeight = clamp(Math.round((p.headingWeight as number) / 100) * 100, 400, 800);
-      if (p.durationSec !== undefined) patch.durationSec = clamp(p.durationSec, 0.5, 15);
-      if (p.fontSizePx !== undefined) patch.fontSizePx = clamp(p.fontSizePx, 12, 300);
+        oneOf(String(p.headingWeight), HEADING_WEIGHTS.map((w) => w.id), "headingWeight");
+      if (p.durationSec !== undefined)
+        patch.durationSec = inRange(p.durationSec, TITLE_CARD_DURATION_RANGE);
+      if (p.fontSizePx !== undefined)
+        patch.fontSizePx = inRange(p.fontSizePx, TITLE_CARD_FONT_SIZE_RANGE);
       if (method === "update_intro") {
         s().updateIntro(patch);
         return { intro: s().intro };
@@ -165,18 +179,15 @@ export async function handleMcpRequest(
       const patch: Record<string, unknown> = { ...(p as object) };
       if (p.position !== undefined)
         oneOf(p.position, WATERMARK_POSITIONS.map((w) => w.id), "position");
-      if (p.opacity !== undefined) patch.opacity = clamp(p.opacity, 0, 1);
-      if (p.fontSizePx !== undefined) patch.fontSizePx = clamp(p.fontSizePx, 8, 200);
+      if (p.opacity !== undefined) patch.opacity = inRange(p.opacity, WATERMARK_OPACITY_RANGE);
+      if (p.fontSizePx !== undefined)
+        patch.fontSizePx = inRange(p.fontSizePx, WATERMARK_FONT_SIZE_RANGE);
       s().updateWatermark(patch);
       return { watermark: s().watermark };
     }
 
     case "add_clip": {
-      const asset =
-        s().assets.find((a) => a.id === p.assetId) ??
-        fail(`no asset with id "${p.assetId}" — call list_assets for current ids`);
-      if (asset.loading || asset.durationSec <= 0)
-        fail(`asset "${asset.fileName}" is still being analyzed — retry in a moment`);
+      const asset = getAsset(p.assetId, { probed: true });
       const startSec = p.startSec as number;
       if (startSec < 0 || startSec >= asset.durationSec)
         fail(`startSec must be within 0..${asset.durationSec.toFixed(1)}s for this asset`);
@@ -184,11 +195,8 @@ export async function handleMcpRequest(
       // source timeline — include the asset like a user checkbox click would.
       if (!asset.selected) s().toggleAssetSelected(asset.id);
       const lengthSec = (p.lengthSec as number | undefined) ?? s().settings.defaultClipLengthSec;
-      s().markClip(asset.id, startSec + lengthSec / 2, asset.durationSec);
-      const created = s().markers[s().markers.length - 1]!;
-      // markClip centers on a point; pin the exact requested in-point/length.
-      s().resizeMarker(created.id, startSec, lengthSec);
-      return { clip: clipSummary(getClip(created.id), byId(s().assets)) };
+      const id = s().addClip(asset.id, startSec, lengthSec);
+      return { clip: clipSummary(getClip(id), byId(s().assets)) };
     }
 
     case "update_clip": {

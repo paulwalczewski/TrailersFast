@@ -1,15 +1,17 @@
 import { Button, Input, Label, TextField } from "@heroui/react";
 import {
+  ALIGNMENTS,
   HEADING_WEIGHTS,
   INTRO_ANIMATIONS,
   INTRO_FONTS,
   type IntroAnimation,
   type IntroConfig,
+  TITLE_CARD_DURATION_RANGE,
+  TITLE_CARD_FONT_SIZE_RANGE,
+  VALIGNS,
 } from "@trailerfast/core";
 import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
 
-const ALIGNMENTS = ["left", "center", "right"] as const;
-const VALIGNS = ["top", "middle", "bottom"] as const;
 const FONT_OPTIONS = INTRO_FONTS.map((f) => ({ id: f, label: f }));
 
 type Props = {
@@ -22,9 +24,7 @@ type Props = {
 };
 
 /** Settings form for a title card (intro/outro) — same fields for both. */
-export function TitleCardForm({ name, hint, config, onChange }: Props) {
-  const update = onChange;
-
+export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted">{hint}</p>
@@ -76,8 +76,8 @@ export function TitleCardForm({ name, hint, config, onChange }: Props) {
         <LabeledSlider
           label="Font size"
           value={config.fontSizePx}
-          min={20}
-          max={160}
+          min={TITLE_CARD_FONT_SIZE_RANGE[0]}
+          max={TITLE_CARD_FONT_SIZE_RANGE[1]}
           step={2}
           onChange={(v) => update({ fontSizePx: v })}
           format={(v) => `${Math.round(v)}px`}
@@ -93,8 +93,8 @@ export function TitleCardForm({ name, hint, config, onChange }: Props) {
         <LabeledSlider
           label="Length"
           value={config.durationSec}
-          min={1}
-          max={10}
+          min={TITLE_CARD_DURATION_RANGE[0]}
+          max={TITLE_CARD_DURATION_RANGE[1]}
           step={0.5}
           onChange={(v) => update({ durationSec: v })}
           format={(v) => `${v.toFixed(1)}s`}

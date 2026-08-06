@@ -49,6 +49,8 @@ export type TrailerStore = Project & {
   updateSettings: (patch: Partial<Settings>) => void;
 
   // Markers (clips)
+  /** Add a clip with explicit bounds (clamped); returns the new marker's id. */
+  addClip: (assetId: string, startSec: number, lengthSec: number) => string;
   /** Mark a clip inside an asset, centered on `localSec`, click-ordered. */
   markClip: (assetId: string, localSec: number, assetDurationSec: number) => void;
   removeMarker: (markerId: string) => void;
@@ -215,6 +217,22 @@ export const useTrailerStore = create<TrailerStore>()(
     set((s) => ({ settings: { ...s.settings, defaultClipLengthSec: sec } })),
 
   updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+  addClip: (assetId, startSec, lengthSec) => {
+    const id = uid("clip");
+    set((s) => {
+      const dur = s.assets.find((a) => a.id === assetId)?.durationSec ?? 0;
+      const marker: ClipMarker = {
+        id,
+        assetId,
+        ...clampClipResize(startSec, lengthSec, dur),
+        order: nextOrder(s.markers),
+        transform: defaultTransform(),
+      };
+      return { markers: [...s.markers, marker] };
+    });
+    return id;
+  },
 
   markClip: (assetId, localSec, assetDurationSec) =>
     set((s) => {
