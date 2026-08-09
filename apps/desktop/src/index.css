@@ -70,6 +70,17 @@ body {
   overflow: hidden;
 }
 
+/* `overflow: hidden` above only hides the page scrollbar — the document can
+   still be scrolled programmatically, and focusing a control does exactly
+   that, which used to shove the whole shell off-screen with no way to scroll
+   back. Pinning #root to the viewport makes that impossible: it also becomes
+   the containing block for stray absolutely positioned descendants, so they
+   can no longer inflate the document at all. */
+#root {
+  position: fixed;
+  inset: 0;
+}
+
 /* Sliders: card-bg light blue for the filled part instead of the accent —
    sliders are everywhere and the primary color made them shout over CTAs.
    HeroUI paints the fill in three pieces: the .slider__fill bar plus the

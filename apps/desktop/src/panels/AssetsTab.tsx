@@ -45,7 +45,7 @@ export function AssetsTab() {
   return (
     <div className="flex h-full flex-col gap-3">
       {assets.length > 0 && (
-        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+        <ul className="relative flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
           {assets.map((a) => (
             <li key={a.id}>
               <Card className="relative border border-separator bg-surface-secondary p-3 shadow-sm">

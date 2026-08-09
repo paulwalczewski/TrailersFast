@@ -43,7 +43,7 @@ export function TrailerWorkArea() {
   }, [markers.length]);
 
   return (
-    <div ref={scrollRef} className="flex h-full flex-col gap-5 overflow-y-auto p-4">
+    <div ref={scrollRef} className="relative flex h-full flex-col gap-5 overflow-y-auto p-4">
       <SourcePanel videoRef={sourceVideoRef} />
       <TrailerSection playerRef={playerRef} />
     </div>
