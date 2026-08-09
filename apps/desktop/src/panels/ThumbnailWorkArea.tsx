@@ -26,7 +26,7 @@ export function ThumbnailWorkArea() {
     THUMBNAIL_TEMPLATES.find((t) => t.id === template)?.label ?? THUMBNAIL_TEMPLATES[0].label;
 
   return (
-    <div ref={scrollRef} className="flex h-full flex-col gap-5 overflow-y-auto p-4">
+    <div ref={scrollRef} className="relative flex h-full flex-col gap-5 overflow-y-auto p-4">
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Source</h2>
