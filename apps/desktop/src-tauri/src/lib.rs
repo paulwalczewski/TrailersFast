@@ -190,6 +190,69 @@ async fn generate_proxy(path: String, start_sec: f64, length_sec: f64) -> Result
     off_main_thread(move || generate_proxy_blocking(&path, start_sec, length_sec)).await
 }
 
+fn proxy_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("trailerfast_proxies")
+}
+
+/// Preview proxies survive restarts on purpose — a cache hit skips the whole
+/// transcode. Nothing ever deleted them, though, so the directory grew without
+/// bound. Sweep it at launch: drop anything stale, then evict oldest-first
+/// until the cache is back under budget. Returns the bytes reclaimed.
+fn prune_proxy_cache() -> u64 {
+    const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+    const MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+    prune_dir(&proxy_dir(), MAX_AGE, MAX_BYTES)
+}
+
+fn prune_dir(dir: &std::path::Path, max_age: std::time::Duration, max_bytes: u64) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    // (modified, size, path) for every proxy we can stat.
+    let mut files: Vec<(std::time::SystemTime, u64, std::path::PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if path.extension()?.to_str()? != "mp4" {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some((meta.modified().ok()?, meta.len(), path))
+        })
+        .collect();
+
+    let now = std::time::SystemTime::now();
+    let mut freed = 0u64;
+    let remove = |size: u64, path: &std::path::Path, freed: &mut u64| {
+        if std::fs::remove_file(path).is_ok() {
+            *freed += size;
+        }
+    };
+
+    // Stale first — age is a better signal than size pressure alone.
+    files.retain(|(modified, size, path)| {
+        let stale = now.duration_since(*modified).map(|a| a > max_age).unwrap_or(false);
+        if stale {
+            remove(*size, path, &mut freed);
+        }
+        !stale
+    });
+
+    let mut total: u64 = files.iter().map(|(_, size, _)| size).sum();
+    if total > max_bytes {
+        files.sort_by_key(|(modified, _, _)| *modified); // oldest first
+        for (_, size, path) in &files {
+            if total <= max_bytes {
+                break;
+            }
+            let before = freed;
+            remove(*size, path, &mut freed);
+            total -= freed - before;
+        }
+    }
+    freed
+}
+
 fn generate_proxy_blocking(path: &str, start_sec: f64, length_sec: f64) -> Result<String, String> {
     use std::hash::{Hash, Hasher};
     ensure_ffmpeg()?;
@@ -198,10 +261,15 @@ fn generate_proxy_blocking(path: &str, start_sec: f64, length_sec: f64) -> Resul
     format!("{path}|{start_sec}|{length_sec}").hash(&mut hasher);
     let hash = hasher.finish();
 
-    let dir = std::env::temp_dir().join("trailerfast_proxies");
+    let dir = proxy_dir();
     let _ = std::fs::create_dir_all(&dir);
     let out = dir.join(format!("proxy_{hash:016x}.mp4"));
     if std::fs::metadata(&out).map(|m| m.len() > 0).unwrap_or(false) {
+        // Touch it so the cache sweep's oldest-first eviction sees real usage
+        // rather than the date the clip was first trimmed.
+        if let Ok(f) = std::fs::File::options().write(true).open(&out) {
+            let _ = f.set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()));
+        }
         return Ok(out.to_string_lossy().into_owned());
     }
 
@@ -278,6 +346,63 @@ async fn export_trailer(
 mod tests {
     use super::*;
 
+    fn write_proxy(dir: &std::path::Path, name: &str, size: usize, age_secs: u64) {
+        let path = dir.join(name);
+        std::fs::write(&path, vec![0u8; size]).unwrap();
+        let when = std::time::SystemTime::now() - std::time::Duration::from_secs(age_secs);
+        let f = std::fs::File::options().write(true).open(&path).unwrap();
+        f.set_times(std::fs::FileTimes::new().set_modified(when)).unwrap();
+    }
+
+    fn names(dir: &std::path::Path) -> Vec<String> {
+        let mut v: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// The proxy cache used to grow forever. The sweep must drop stale entries,
+    /// then evict oldest-first down to budget — and leave fresh, in-budget
+    /// proxies alone so restarts still hit the cache instead of re-transcoding.
+    #[test]
+    fn prunes_stale_then_evicts_oldest_over_budget() {
+        let dir = std::env::temp_dir().join(format!("tf_prune_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let day = 24 * 60 * 60;
+        write_proxy(&dir, "old.mp4", 100, 30 * day); // stale → always dropped
+        write_proxy(&dir, "a.mp4", 100, 3 * day); // oldest fresh → evicted for budget
+        write_proxy(&dir, "b.mp4", 100, 2 * day);
+        write_proxy(&dir, "c.mp4", 100, 1 * day);
+        write_proxy(&dir, "keep.txt", 500, 30 * day); // not ours — never touched
+
+        // Budget of 250 leaves room for two of the three fresh 100-byte proxies.
+        let freed = prune_dir(&dir, std::time::Duration::from_secs(7 * day), 250);
+
+        assert_eq!(freed, 200, "stale old.mp4 + evicted a.mp4");
+        assert_eq!(names(&dir), vec!["b.mp4", "c.mp4", "keep.txt"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A cache that already fits must survive untouched — evicting here would
+    /// mean re-transcoding every clip on the next launch.
+    #[test]
+    fn prune_keeps_a_cache_under_budget() {
+        let dir = std::env::temp_dir().join(format!("tf_prune_ok_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        write_proxy(&dir, "a.mp4", 100, 60);
+        write_proxy(&dir, "b.mp4", 100, 30);
+
+        assert_eq!(prune_dir(&dir, std::time::Duration::from_secs(7 * 24 * 3600), 1024), 0);
+        assert_eq!(names(&dir), vec!["a.mp4", "b.mp4"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Phone footage stores rotation as display-matrix side data; players and
     /// FFmpeg auto-rotate, so the probe must report display dimensions.
     #[test]
@@ -332,6 +457,15 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // Off the main thread: a large stale cache means a lot of unlink
+            // syscalls, and none of it gates the first paint.
+            std::thread::spawn(|| {
+                let freed = prune_proxy_cache();
+                if freed > 0 {
+                    log::info!("pruned {} MB of stale preview proxies", freed / (1024 * 1024));
+                }
+            });
 
             // Embedded MCP server (AI integration): localhost HTTP, token-gated.
             let bridge = Arc::new(mcp::McpBridge::new(app.handle().clone()));
