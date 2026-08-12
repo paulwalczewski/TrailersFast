@@ -95,6 +95,10 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
       fontSizePx: watermark.fontSizePx,
       color: watermark.color,
       opacity: watermark.opacity,
+      shadowEnabled: watermark.shadowEnabled,
+      shadowIntensity: watermark.shadowIntensity,
+      shadowX: watermark.shadowX,
+      shadowY: watermark.shadowY,
     };
   }, [watermark]);
 

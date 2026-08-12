@@ -9,6 +9,7 @@ import {
   type IntroAnimation,
   type Project,
   type Settings,
+  type ShadowConfig,
   type WatermarkPosition,
   byId,
   canvasFor,
@@ -69,7 +70,7 @@ export type ExportPlanClip = ClipCropSpec & {
   hasAudio: boolean;
 };
 
-export type ExportPlanIntro = {
+export type ExportPlanIntro = ShadowConfig & {
   text: string;
   description: string;
   fontFamily: string;
@@ -80,13 +81,9 @@ export type ExportPlanIntro = {
   animation: IntroAnimation;
   durationSec: number;
   fontSizePx: number;
-  shadowEnabled: boolean;
-  shadowIntensity: number;
-  shadowX: number;
-  shadowY: number;
 };
 
-export type ExportPlanWatermark = {
+export type ExportPlanWatermark = ShadowConfig & {
   text: string;
   position: WatermarkPosition;
   fontFamily: string;
@@ -134,6 +131,13 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
   // Text sizes/offsets are authored against a 1080 short side; scale to the export canvas.
   const s = Math.min(enc.width, enc.height) / PREVIEW_SHORT_SIDE;
   const px = (v: number) => Math.round(v * s);
+  /** Offsets are authored in preview px too, so they scale with the canvas. */
+  const scaledShadow = (cfg: ShadowConfig): ShadowConfig => ({
+    shadowEnabled: cfg.shadowEnabled,
+    shadowIntensity: cfg.shadowIntensity,
+    shadowX: px(cfg.shadowX),
+    shadowY: px(cfg.shadowY),
+  });
 
   const clipTotal = clips.reduce((n, c) => n + c.lengthSec, 0);
   const titleCard = (cfg: Project["intro"]): ExportPlanIntro | null =>
@@ -149,10 +153,7 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
           animation: cfg.animation,
           durationSec: Math.min(cfg.durationSec, clipTotal),
           fontSizePx: px(cfg.fontSizePx),
-          shadowEnabled: cfg.shadowEnabled,
-          shadowIntensity: cfg.shadowIntensity,
-          shadowX: px(cfg.shadowX),
-          shadowY: px(cfg.shadowY),
+          ...scaledShadow(cfg),
         }
       : null;
   const intro = titleCard(project.intro);
@@ -167,6 +168,7 @@ export function buildExportPlan(project: Project, opts: ExportOpts, fps = 30): E
         fontSizePx: px(wm.fontSizePx),
         color: wm.color,
         opacity: wm.opacity,
+        ...scaledShadow(wm),
       }
     : null;
 

@@ -1,8 +1,8 @@
-import type { WatermarkPosition } from "@trailerfast/core";
+import type { ShadowConfig, WatermarkPosition } from "@trailerfast/core";
 import type { CSSProperties } from "react";
 import { AbsoluteFill } from "remotion";
 
-export type WatermarkProps = {
+export type WatermarkProps = ShadowConfig & {
   text: string;
   position: WatermarkPosition;
   fontFamily: string;
@@ -26,6 +26,10 @@ export function WatermarkOverlay({
   fontSizePx,
   color,
   opacity,
+  shadowEnabled,
+  shadowIntensity,
+  shadowX,
+  shadowY,
 }: WatermarkProps) {
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
@@ -38,7 +42,10 @@ export function WatermarkOverlay({
           fontFamily,
           fontSize: fontSizePx,
           fontWeight: 700,
-          textShadow: "0 1px 8px rgba(0,0,0,0.6)",
+          // Hard shadow (blur 0) to match FFmpeg drawtext's shadowx/shadowy in export.
+          textShadow: shadowEnabled
+            ? `${shadowX}px ${shadowY}px 0 rgba(0,0,0,${shadowIntensity})`
+            : undefined,
         }}
       >
         {text}

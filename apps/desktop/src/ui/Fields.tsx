@@ -1,4 +1,9 @@
 import { Label, ListBox, Select, Slider, Switch } from "@heroui/react";
+import {
+  SHADOW_INTENSITY_RANGE,
+  SHADOW_OFFSET_RANGE,
+  type ShadowConfig,
+} from "@trailerfast/core";
 import type { ReactNode } from "react";
 
 type Option = { id: string; label: string };
@@ -98,6 +103,59 @@ export function LabeledSelect({
         </ListBox>
       </Select.Popover>
     </Select>
+  );
+}
+
+/**
+ * Text-shadow switch + offset/intensity sliders, shared by every overlaid text
+ * (title cards, watermark, thumbnail title) so they stay configured alike.
+ */
+export function ShadowFields({
+  config,
+  onChange: update,
+}: {
+  config: ShadowConfig;
+  onChange: (patch: Partial<ShadowConfig>) => void;
+}) {
+  return (
+    <>
+      <LabeledSwitch
+        label="Text shadow"
+        checked={config.shadowEnabled}
+        onChange={(v) => update({ shadowEnabled: v })}
+      />
+      {config.shadowEnabled ? (
+        <>
+          <LabeledSlider
+            label="Shadow intensity"
+            value={config.shadowIntensity}
+            min={SHADOW_INTENSITY_RANGE[0]}
+            max={SHADOW_INTENSITY_RANGE[1]}
+            step={0.05}
+            onChange={(v) => update({ shadowIntensity: v })}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+          <LabeledSlider
+            label="Shadow X"
+            value={config.shadowX}
+            min={SHADOW_OFFSET_RANGE[0]}
+            max={SHADOW_OFFSET_RANGE[1]}
+            step={1}
+            onChange={(v) => update({ shadowX: v })}
+            format={(v) => `${Math.round(v)}px`}
+          />
+          <LabeledSlider
+            label="Shadow Y"
+            value={config.shadowY}
+            min={SHADOW_OFFSET_RANGE[0]}
+            max={SHADOW_OFFSET_RANGE[1]}
+            step={1}
+            onChange={(v) => update({ shadowY: v })}
+            format={(v) => `${Math.round(v)}px`}
+          />
+        </>
+      ) : null}
+    </>
   );
 }
 

@@ -53,6 +53,10 @@ pub struct ExportWatermark {
     pub font_size_px: u32,
     pub color: String,
     pub opacity: f64,
+    pub shadow_enabled: bool,
+    pub shadow_intensity: f64,
+    pub shadow_x: i64,
+    pub shadow_y: i64,
 }
 
 #[derive(Deserialize)]
@@ -223,6 +227,16 @@ fn one_drawtext(
     )
 }
 
+/// The `:shadowcolor=...:shadowx=...:shadowy=...` drawtext fragment for a text
+/// overlay's shadow, or "" when it's off. Blur-less, matching the CSS preview.
+fn shadow_arg(enabled: bool, intensity: f64, x: i64, y: i64) -> String {
+    if enabled {
+        format!(":shadowcolor=black@{intensity:.3}:shadowx={x}:shadowy={y}")
+    } else {
+        String::new()
+    }
+}
+
 /// Resolve a font family + CSS weight to an explicit font file, preferring a
 /// bold file for bold weights, falling back to any available font.
 fn font_file_for(family: &str, weight: u32) -> Option<String> {
@@ -302,14 +316,12 @@ fn build_intro_chain(intro: &ExportIntro, w: u32, h: u32) -> String {
     let desc_text = sanitize_text(&intro.description);
     let has_desc = !desc_text.is_empty();
 
-    let shadow = if intro.shadow_enabled {
-        format!(
-            ":shadowcolor=black@{:.3}:shadowx={}:shadowy={}",
-            intro.shadow_intensity, intro.shadow_x, intro.shadow_y
-        )
-    } else {
-        String::new()
-    };
+    let shadow = shadow_arg(
+        intro.shadow_enabled,
+        intro.shadow_intensity,
+        intro.shadow_x,
+        intro.shadow_y,
+    );
 
     // Vertical alignment of the heading (+ description) block, with edge padding.
     let desc_fs = fs * 0.42;
@@ -365,7 +377,12 @@ fn build_watermark(wm: &ExportWatermark, font: &str, w: u32, _h: u32) -> String 
         &format!("fontfile='{font}'"),
         &sanitize_text(&wm.text),
         &sanitize_color(&wm.color),
-        "",
+        &shadow_arg(
+            wm.shadow_enabled,
+            wm.shadow_intensity,
+            wm.shadow_x,
+            wm.shadow_y,
+        ),
         &wm.font_size_px.to_string(),
         &x,
         &y,
@@ -657,5 +674,39 @@ pub fn run_export_inner(
         } else {
             format!("export failed: {last_err}")
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn watermark(shadow_enabled: bool) -> ExportWatermark {
+        ExportWatermark {
+            text: "© Brand".into(),
+            position: "bottom-right".into(),
+            font_family: "Avenir Next".into(),
+            font_size_px: 32,
+            color: "#ffffff".into(),
+            opacity: 0.8,
+            shadow_enabled,
+            shadow_intensity: 0.9,
+            shadow_x: 6,
+            shadow_y: -4,
+        }
+    }
+
+    /// The watermark's shadow must reach drawtext — the preview draws one, so an
+    /// export without it silently disagrees with what the user approved.
+    #[test]
+    fn watermark_burns_in_its_shadow() {
+        let f = build_watermark(&watermark(true), "/tmp/font.ttf", 1920, 1080);
+        assert!(f.contains(":shadowcolor=black@0.900:shadowx=6:shadowy=-4"), "{f}");
+    }
+
+    #[test]
+    fn watermark_shadow_off_adds_nothing() {
+        let f = build_watermark(&watermark(false), "/tmp/font.ttf", 1920, 1080);
+        assert!(!f.contains("shadow"), "{f}");
     }
 }

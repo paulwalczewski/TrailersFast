@@ -9,7 +9,13 @@ import {
   thumbnailTextActive,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import {
+  LabeledColor,
+  LabeledSelect,
+  LabeledSlider,
+  LabeledSwitch,
+  ShadowFields,
+} from "../ui/Fields";
 import { Section } from "../ui/Section";
 
 /** Heading + description drawn over the thumbnail background. */
@@ -109,42 +115,7 @@ function TitleForm() {
 
         <LabeledColor label="Color" value={title.color} onChange={(v) => update({ color: v })} />
 
-        <LabeledSwitch
-          label="Text shadow"
-          checked={title.shadowEnabled}
-          onChange={(v) => update({ shadowEnabled: v })}
-        />
-        {title.shadowEnabled ? (
-          <>
-            <LabeledSlider
-              label="Shadow intensity"
-              value={title.shadowIntensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => update({ shadowIntensity: v })}
-              format={(v) => `${Math.round(v * 100)}%`}
-            />
-            <LabeledSlider
-              label="Shadow X"
-              value={title.shadowX}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowX: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-            <LabeledSlider
-              label="Shadow Y"
-              value={title.shadowY}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowY: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-          </>
-        ) : null}
+        <ShadowFields config={title} onChange={update} />
       </div>
     </div>
   );

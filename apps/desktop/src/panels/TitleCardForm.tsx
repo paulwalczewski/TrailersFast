@@ -10,7 +10,13 @@ import {
   TITLE_CARD_FONT_SIZE_RANGE,
   VALIGNS,
 } from "@trailerfast/core";
-import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import {
+  LabeledColor,
+  LabeledSelect,
+  LabeledSlider,
+  LabeledSwitch,
+  ShadowFields,
+} from "../ui/Fields";
 
 type Props = {
   /** Lowercase card name for the enable switch, e.g. "intro" / "outro". */
@@ -132,42 +138,7 @@ export function TitleCardForm({ name, hint, config, onChange: update }: Props) {
 
         <LabeledColor label="Color" value={config.color} onChange={(v) => update({ color: v })} />
 
-        <LabeledSwitch
-          label="Text shadow"
-          checked={config.shadowEnabled}
-          onChange={(v) => update({ shadowEnabled: v })}
-        />
-        {config.shadowEnabled ? (
-          <>
-            <LabeledSlider
-              label="Shadow intensity"
-              value={config.shadowIntensity}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => update({ shadowIntensity: v })}
-              format={(v) => `${Math.round(v * 100)}%`}
-            />
-            <LabeledSlider
-              label="Shadow X"
-              value={config.shadowX}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowX: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-            <LabeledSlider
-              label="Shadow Y"
-              value={config.shadowY}
-              min={-15}
-              max={15}
-              step={1}
-              onChange={(v) => update({ shadowY: v })}
-              format={(v) => `${Math.round(v)}px`}
-            />
-          </>
-        ) : null}
+        <ShadowFields config={config} onChange={update} />
       </div>
     </div>
   );
