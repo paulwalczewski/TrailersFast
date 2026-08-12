@@ -5,6 +5,7 @@ import { AiIntegrationModal } from "./panels/AiIntegrationModal";
 import { ExportBar } from "./panels/ExportBar";
 import { Logo } from "./panels/Logo";
 import { ModeTabs } from "./panels/ModeTabs";
+import { NewTrailerButton } from "./panels/NewTrailerButton";
 import { OnboardingOverlay } from "./panels/OnboardingOverlay";
 import { Sidebar } from "./panels/Sidebar";
 import { UndoRedoButtons } from "./panels/UndoRedoButtons";
@@ -26,7 +27,10 @@ export function App() {
             <span className="font-semibold tracking-tight">Trailers Fast</span>
           </div>
           <div className="h-5 w-px bg-separator" />
-          <UndoRedoButtons />
+          <div className="flex items-center gap-0.5">
+            <UndoRedoButtons />
+            <NewTrailerButton />
+          </div>
         </div>
         <ModeTabs />
         <div className="flex items-center justify-end gap-3">

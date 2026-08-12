@@ -49,6 +49,13 @@ export type TrailerStore = Project & {
   mode: EditorMode;
   setMode: (mode: EditorMode) => void;
 
+  /**
+   * Start a new trailer: drop every asset, clip and picked thumbnail frame.
+   * Text/watermark/export settings are preferences, so they survive. Recorded
+   * as a single undo step like any other document edit.
+   */
+  clearProject: () => void;
+
   // Assets
   addAssets: (assets: AssetInput[]) => void;
   /** Add a placeholder asset immediately (loading), returning its id. */
@@ -152,6 +159,13 @@ export const useTrailerStore = create<TrailerStore>()(
 
   mode: "trailer",
   setMode: (mode) => set({ mode }),
+
+  clearProject: () =>
+    set((s) => ({
+      assets: [],
+      markers: [],
+      thumbnail: { ...s.thumbnail, frames: [] },
+    })),
 
   setProxy: (key, path) => set((s) => ({ proxies: { ...s.proxies, [key]: path } })),
   setLastExportPath: (path) => set({ lastExportPath: path }),
