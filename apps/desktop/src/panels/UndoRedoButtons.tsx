@@ -1,5 +1,6 @@
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect } from "react";
+import { IconButton } from "../ui/IconButton";
 
 export function UndoRedoButtons() {
   const undo = useTrailerStore((s) => s.undo);
@@ -35,42 +36,5 @@ export function UndoRedoButtons() {
         <path d="M20 9H9a4 4 0 1 0 0 8h1" />
       </IconButton>
     </div>
-  );
-}
-
-function IconButton({
-  onPress,
-  disabled,
-  label,
-  children,
-}: {
-  onPress: () => void;
-  disabled: boolean;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="grid size-7 place-items-center rounded-lg text-muted transition-colors enabled:hover:bg-surface-tertiary enabled:hover:text-foreground disabled:opacity-30"
-    >
-      <svg
-        width="17"
-        height="17"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        {children}
-      </svg>
-    </button>
   );
 }
