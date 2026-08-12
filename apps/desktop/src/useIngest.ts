@@ -3,6 +3,7 @@ import { useTrailerStore } from "@trailerfast/state";
 import type { FileRef } from "@trailerfast/video-engine";
 import { useCallback } from "react";
 import { engine, isTauri } from "./engine";
+import { createJobLimiter } from "./jobLimiter";
 
 const FILMSTRIP_FRAMES = 8;
 
@@ -12,26 +13,7 @@ const FILMSTRIP_FRAMES = 8;
  * gated — they're near-instant and fill in duration/dimensions right away.
  */
 const MAX_CONCURRENT_THUMBNAIL_JOBS = 3;
-let activeThumbnailJobs = 0;
-const thumbnailQueue: Array<() => void> = [];
-
-function acquireThumbnailSlot(): Promise<void> {
-  if (activeThumbnailJobs < MAX_CONCURRENT_THUMBNAIL_JOBS) {
-    activeThumbnailJobs++;
-    return Promise.resolve();
-  }
-  return new Promise((resolve) =>
-    thumbnailQueue.push(() => {
-      activeThumbnailJobs++;
-      resolve();
-    }),
-  );
-}
-
-function releaseThumbnailSlot(): void {
-  activeThumbnailJobs--;
-  thumbnailQueue.shift()?.();
-}
+const runThumbnailJob = createJobLimiter(MAX_CONCURRENT_THUMBNAIL_JOBS);
 
 export function isVideoPath(p: string): boolean {
   const ext = p.split(".").pop()?.toLowerCase() ?? "";
@@ -76,20 +58,19 @@ export function useIngest(): (files: FileRef[]) => Promise<IngestOutcome>[] {
           const times = Array.from({ length: FILMSTRIP_FRAMES }, (_, i) =>
             Math.max(0, (info.durationSec * (i + 0.5)) / FILMSTRIP_FRAMES),
           );
-          await acquireThumbnailSlot();
           try {
-            // Poster first, so the card gets an image as soon as possible…
-            const [poster] = await engine.thumbnails(f, times.slice(0, 1));
-            if (poster) setAssetMedia(id, { posterUrl: poster });
-            // …then the rest of the filmstrip.
-            const rest = await engine.thumbnails(f, times.slice(1));
-            const urls = poster ? [poster, ...rest] : rest;
-            setAssetMedia(id, { filmstripUrls: urls, posterUrl: urls[0], mediaLoading: false });
+            await runThumbnailJob(async () => {
+              // Poster first, so the card gets an image as soon as possible…
+              const [poster] = await engine.thumbnails(f, times.slice(0, 1));
+              if (poster) setAssetMedia(id, { posterUrl: poster });
+              // …then the rest of the filmstrip.
+              const rest = await engine.thumbnails(f, times.slice(1));
+              const urls = poster ? [poster, ...rest] : rest;
+              setAssetMedia(id, { filmstripUrls: urls, posterUrl: urls[0], mediaLoading: false });
+            });
           } catch (err) {
             console.error(`Thumbnails failed for ${f.fileName}`, err);
             setAssetMedia(id, { mediaLoading: false });
-          } finally {
-            releaseThumbnailSlot();
           }
         })();
 
