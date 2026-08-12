@@ -96,8 +96,31 @@ export const WATERMARK_OPACITY_RANGE = [0.1, 1] as const;
 export const CLIP_LENGTH_RANGE = [1, 10] as const;
 /** Thumbnail titles run bigger than trailer title cards — one glanceable line. */
 export const THUMBNAIL_FONT_SIZE_RANGE = [24, 240] as const;
+export const SHADOW_INTENSITY_RANGE = [0, 1] as const;
+export const SHADOW_OFFSET_RANGE = [-15, 15] as const;
 
-export type IntroConfig = {
+/**
+ * Drop shadow behind overlaid text — shared by the title cards, the watermark
+ * and the thumbnail title. Hard-edged (no blur) so the CSS preview, the canvas
+ * render and FFmpeg's `drawtext` shadowx/shadowy all produce the same pixels.
+ */
+export type ShadowConfig = {
+  shadowEnabled: boolean;
+  /** Shadow opacity, 0..1. */
+  shadowIntensity: number;
+  /** Shadow offset in px (canvas units). */
+  shadowX: number;
+  shadowY: number;
+};
+
+export const defaultShadow = (): ShadowConfig => ({
+  shadowEnabled: true,
+  shadowIntensity: 0.55,
+  shadowX: 2,
+  shadowY: 2,
+});
+
+export type IntroConfig = ShadowConfig & {
   enabled: boolean;
   /** Heading line. */
   text: string;
@@ -114,13 +137,6 @@ export type IntroConfig = {
   vAlign: VAlign;
   animation: IntroAnimation;
   durationSec: number;
-  /** Drop shadow behind the intro text. */
-  shadowEnabled: boolean;
-  /** Shadow opacity, 0..1. */
-  shadowIntensity: number;
-  /** Shadow offset in px (canvas units). */
-  shadowX: number;
-  shadowY: number;
 };
 
 /**
@@ -301,7 +317,7 @@ export type ThumbnailFrame = {
 };
 
 /** The heading + description drawn over the thumbnail background. */
-export type ThumbnailTextConfig = {
+export type ThumbnailTextConfig = ShadowConfig & {
   enabled: boolean;
   /** Heading line. */
   text: string;
@@ -314,10 +330,6 @@ export type ThumbnailTextConfig = {
   color: string;
   align: Align;
   vAlign: VAlign;
-  shadowEnabled: boolean;
-  shadowIntensity: number;
-  shadowX: number;
-  shadowY: number;
 };
 
 export type ThumbnailConfig = {
@@ -346,10 +358,7 @@ export const defaultThumbnailText = (): ThumbnailTextConfig => ({
   color: "#ffffff",
   align: "center",
   vAlign: "middle",
-  shadowEnabled: true,
-  shadowIntensity: 0.55,
-  shadowX: 2,
-  shadowY: 2,
+  ...defaultShadow(),
 });
 
 export const defaultThumbnail = (): ThumbnailConfig => ({
@@ -372,7 +381,7 @@ export const WATERMARK_POSITIONS: { id: WatermarkPosition; label: string }[] = [
 ];
 
 /** A text watermark shown across the whole trailer. */
-export type WatermarkConfig = {
+export type WatermarkConfig = ShadowConfig & {
   enabled: boolean;
   text: string;
   position: WatermarkPosition;
@@ -391,6 +400,7 @@ export const defaultWatermark = (): WatermarkConfig => ({
   fontSizePx: 32,
   color: "#ffffff",
   opacity: 0.8,
+  ...defaultShadow(),
 });
 
 export const defaultIntro = (): IntroConfig => ({
@@ -405,10 +415,7 @@ export const defaultIntro = (): IntroConfig => ({
   vAlign: "middle",
   animation: "fade",
   durationSec: 3,
-  shadowEnabled: true,
-  shadowIntensity: 0.55,
-  shadowX: 2,
-  shadowY: 2,
+  ...defaultShadow(),
 });
 
 export const emptyProject = (): Project => ({

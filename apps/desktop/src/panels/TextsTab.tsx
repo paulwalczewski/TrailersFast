@@ -7,7 +7,13 @@ import {
   type WatermarkPosition,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { LabeledColor, LabeledSelect, LabeledSlider, LabeledSwitch } from "../ui/Fields";
+import {
+  LabeledColor,
+  LabeledSelect,
+  LabeledSlider,
+  LabeledSwitch,
+  ShadowFields,
+} from "../ui/Fields";
 import { Section } from "../ui/Section";
 import { TitleCardForm } from "./TitleCardForm";
 
@@ -72,6 +78,8 @@ function WatermarkForm() {
         />
 
         <LabeledColor label="Color" value={wm.color} onChange={(v) => update({ color: v })} />
+
+        <ShadowFields config={wm} onChange={update} />
       </div>
     </div>
   );
