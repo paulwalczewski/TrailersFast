@@ -1,5 +1,5 @@
 import { Button } from "@heroui/react";
-import { EXPORT_PRESETS, type ExportPreset } from "@trailerfast/core";
+import { type ExportPreset, exportPresetsFor } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useState } from "react";
 import { engine, isTauri } from "../engine";
@@ -16,6 +16,7 @@ const CODECS = [
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const lastExportPath = useTrailerStore((s) => s.lastExportPath);
   const setLastExportPath = useTrailerStore((s) => s.setLastExportPath);
+  const aspectRatio = useTrailerStore((s) => s.settings.aspectRatio);
 
   const [preset, setPreset] = useState<ExportPreset>("standard-1080");
   const [codec, setCodec] = useState<"h264" | "hevc">("h264");
@@ -26,6 +27,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
   const [warning, setWarning] = useState("");
 
   const busy = phase === "exporting";
+  const presets = exportPresetsFor(aspectRatio);
 
   async function onExport() {
     if (!isTauri()) {
@@ -68,10 +70,12 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
           ✕
         </button>
       </div>
-      <p className="mb-4 text-xs text-muted">Choose a quality preset and codec.</p>
+      <p className="mb-4 text-xs text-muted">
+        Choose a quality preset and codec — sizes are for the {aspectRatio} canvas.
+      </p>
 
         <div className="mb-4 flex flex-col gap-2">
-          {EXPORT_PRESETS.map((p) => (
+          {presets.map((p) => (
             <button
               key={p.id}
               type="button"
