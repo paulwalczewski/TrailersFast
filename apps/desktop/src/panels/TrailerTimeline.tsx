@@ -8,10 +8,12 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { PlayerRef } from "@remotion/player";
 import { MIN_CLIP_SEC, buildTrailerClips, byId, totalFrames, trailerDuration } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type PointerEvent, type RefObject, useMemo, useRef, useState } from "react";
+import { type PointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PREVIEW_FPS } from "../composition/TrailerComposition";
+import { Playhead, playheadLeft } from "../ui/Playhead";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
 import { ClipTransformModal } from "./ClipTransformModal";
 
@@ -204,9 +206,44 @@ function SortableClip({
   );
 }
 
-type Props = { currentFrame: number; onSeekFrame: (frame: number) => void };
+/**
+ * Follows the player by writing the marker's `left` directly, never by
+ * re-rendering. The row below is a dnd-kit tree, and re-rendering it on every
+ * frame starved the player's frame loop: its clock only advances on a committed
+ * React render, so a render that misses the next tick loses that time for good —
+ * the preview ran at ~20fps while the videos ran at 1x and hit the end of each
+ * clip early. Only the clip highlight goes through state, and only when it moves.
+ */
+function LivePlayhead({
+  playerRef,
+  total,
+  onFrame,
+}: {
+  playerRef: RefObject<PlayerRef | null>;
+  total: number;
+  onFrame: (frame: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
 
-export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
+  useEffect(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    const apply = () => {
+      const frame = p.getCurrentFrame();
+      if (ref.current) ref.current.style.left = playheadLeft(total > 0 ? frame / total : 0);
+      onFrame(frame);
+    };
+    apply();
+    p.addEventListener("frameupdate", apply);
+    return () => p.removeEventListener("frameupdate", apply);
+  }, [playerRef, total, onFrame]);
+
+  return <Playhead ref={ref} />;
+}
+
+type Props = { playerRef: RefObject<PlayerRef | null> };
+
+export function TrailerTimeline({ playerRef }: Props) {
   const markers = useTrailerStore((s) => s.markers);
   const assets = useTrailerStore((s) => s.assets);
   const reorderMarker = useTrailerStore((s) => s.reorderMarker);
@@ -215,11 +252,14 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
   const beginBatch = useTrailerStore((s) => s.beginHistoryBatch);
   const endBatch = useTrailerStore((s) => s.endHistoryBatch);
 
+  const seek = useCallback((frame: number) => playerRef.current?.seekTo(frame), [playerRef]);
+
   const rulerRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
   const dragging = useRef(false);
   const resizing = useRef(false);
   const [configMarkerId, setConfigMarkerId] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const assetsById = useMemo(() => byId(assets), [assets]);
@@ -250,7 +290,13 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
     });
   }, [items]);
   const total = totalFrames(items);
-  const currentIndex = starts.findLastIndex((s) => currentFrame >= s);
+
+  // setState with an unchanged value bails out, so this costs nothing per frame —
+  // it only re-renders when the playhead actually crosses into another clip.
+  const trackFrame = useCallback(
+    (frame: number) => setCurrentIndex(starts.findLastIndex((s) => frame >= s)),
+    [starts],
+  );
 
   if (items.length === 0) {
     return (
@@ -265,7 +311,7 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
     if (!el || total === 0) return;
     const rect = el.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    onSeekFrame(Math.round(frac * total));
+    seek(Math.round(frac * total));
   }
   function onRulerDown(e: PointerEvent) {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -300,8 +346,6 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
     if (newIndex !== -1) reorderMarker(String(active.id), newIndex);
   }
 
-  const frac = total > 0 ? currentFrame / total : 0;
-
   return (
     <div className="relative rounded-xl border border-separator bg-surface p-2">
       {/* Scrub ruler */}
@@ -332,7 +376,7 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
                 item={it}
                 index={i}
                 isCurrent={i === currentIndex}
-                onSelect={() => onSeekFrame(starts[i] ?? 0)}
+                onSelect={() => seek(starts[i] ?? 0)}
                 onRemove={() => removeMarker(it.id)}
                 onConfigure={() => setConfigMarkerId(it.id)}
                 onResize={resizeMarker}
@@ -346,13 +390,7 @@ export function TrailerTimeline({ currentFrame, onSeekFrame }: Props) {
         </SortableContext>
       </DndContext>
 
-      {/* Playhead */}
-      <div
-        className="pointer-events-none absolute inset-y-2 w-[2px] bg-danger"
-        style={{ left: `calc(0.5rem + ${frac} * (100% - 1rem))` }}
-      >
-        <div className="absolute -left-[5px] -top-1 size-3 rounded-full border border-white bg-danger" />
-      </div>
+      <LivePlayhead playerRef={playerRef} total={total} onFrame={trackFrame} />
 
       {configMarkerId ? (
         <ClipTransformModal markerId={configMarkerId} onClose={() => setConfigMarkerId(null)} />

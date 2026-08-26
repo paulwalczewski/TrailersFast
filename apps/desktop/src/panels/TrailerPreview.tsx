@@ -1,15 +1,17 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import {
   type IntroConfig,
+  PROXY_SIDE,
   buildTrailerClips,
   byId,
   canvasFor,
   introActive,
+  proxyKey,
   totalFrames,
   watermarkActive,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type RefObject, useEffect, useMemo } from "react";
+import { type RefObject, useMemo } from "react";
 import type { IntroProps } from "../composition/IntroTitle";
 import { PREVIEW_FPS, TrailerComposition, type PreviewClip } from "../composition/TrailerComposition";
 import type { WatermarkProps } from "../composition/WatermarkOverlay";
@@ -17,9 +19,10 @@ import { engine } from "../engine";
 
 type Props = {
   playerRef: RefObject<PlayerRef | null>;
-  onFrame: (frame: number) => void;
   /** CSS max-height for the preview (e.g. "30vh" inline, "66vh" in the modal). */
   maxHeight?: string;
+  /** Proxy tier to prefer; falls back to the inline tier until that one exists. */
+  proxyShortSide?: number;
 };
 
 /** Map an intro/outro config to composition props, capped to the trailer length. */
@@ -43,7 +46,11 @@ function titleCardProps(cfg: IntroConfig, maxFrames: number): IntroProps | null 
   };
 }
 
-export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props) {
+export function TrailerPreview({
+  playerRef,
+  maxHeight = "36vh",
+  proxyShortSide = PROXY_SIDE.inline,
+}: Props) {
   const markers = useTrailerStore((s) => s.markers);
   const assets = useTrailerStore((s) => s.assets);
   const intro = useTrailerStore((s) => s.intro);
@@ -72,13 +79,15 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
           srcHeight: asset?.height ?? 0,
           transform: c.transform,
         };
-        const proxy = proxies[c.proxyKey];
+        // Sharpest tier that has finished encoding; the inline one is always the
+        // first to exist, and the source is the fallback until any proxy is ready.
+        const proxy = proxies[proxyKey(c, proxyShortSide)] ?? proxies[proxyKey(c)];
         // Proxy plays linearly from 0 (smooth); source+trim is the fallback until ready.
         return proxy
           ? { ...common, src: engine.toPlayableUrl(proxy), trimBeforeInFrames: 0 }
           : { ...common, src: engine.toPlayableUrl(c.assetPath), trimBeforeInFrames: c.trimBeforeInFrames };
       }),
-    [markers, assetsById, proxies],
+    [markers, assetsById, proxies, proxyShortSide],
   );
 
   const durationInFrames = Math.max(1, totalFrames(clips));
@@ -102,13 +111,19 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
     };
   }, [watermark]);
 
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    const handler = () => onFrame(p.getCurrentFrame());
-    p.addEventListener("frameupdate", handler);
-    return () => p.removeEventListener("frameupdate", handler);
-  }, [playerRef, onFrame, clips.length]);
+  // A fresh object here would re-render the whole composition on every render
+  // of this component, for no change in what it draws.
+  const inputProps = useMemo(
+    () => ({
+      clips,
+      intro: introProps,
+      outro: outroProps,
+      watermark: watermarkProps,
+      flipHorizontal: settings.flipHorizontal,
+      fitMode: settings.fitMode,
+    }),
+    [clips, introProps, outroProps, watermarkProps, settings.flipHorizontal, settings.fitMode],
+  );
 
   // Size the box to the exact composition ratio, capped by maxHeight and full width,
   // so the video fills it (no black bars, controls sit on the video).
@@ -143,14 +158,7 @@ export function TrailerPreview({ playerRef, onFrame, maxHeight = "36vh" }: Props
         <Player
         ref={playerRef}
         component={TrailerComposition}
-        inputProps={{
-          clips,
-          intro: introProps,
-          outro: outroProps,
-          watermark: watermarkProps,
-          flipHorizontal: settings.flipHorizontal,
-          fitMode: settings.fitMode,
-        }}
+        inputProps={inputProps}
         durationInFrames={durationInFrames}
         compositionWidth={width}
         compositionHeight={height}

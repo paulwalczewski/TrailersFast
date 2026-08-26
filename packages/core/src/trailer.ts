@@ -19,8 +19,6 @@ export type TrailerClip = {
   lengthSec: number;
   /** Source duration, seconds. */
   assetDurationSec: number;
-  /** Cache key for this clip's preview proxy. */
-  proxyKey: string;
   /** Framing (pan/zoom) within the trailer canvas. */
   transform: ClipTransform;
 };
@@ -39,7 +37,6 @@ export function buildTrailerClips(
     startSec: m.startSec,
     lengthSec: m.lengthSec,
     assetDurationSec: assetsById[m.assetId]?.durationSec ?? 0,
-    proxyKey: proxyKey(m),
     transform: m.transform ?? defaultTransform(),
   }));
 }
@@ -58,7 +55,17 @@ export function totalFrames(clips: { durationInFrames: number }[]): number {
   return clips.reduce((n, c) => n + c.durationInFrames, 0);
 }
 
-/** Stable cache key for a clip's preview proxy (source + in-point + length). */
-export function proxyKey(m: { assetId: string; startSec: number; lengthSec: number }): string {
-  return `${m.assetId}:${m.startSec.toFixed(3)}:${m.lengthSec.toFixed(3)}`;
+/**
+ * Short side of a preview proxy, px. `inline` is all the small preview can show;
+ * the enlarged view is ~3x the height, where 360p is visibly soft, so it asks for
+ * a sharper tier and falls back to the inline one until that finishes encoding.
+ */
+export const PROXY_SIDE = { inline: 360, enlarged: 720 } as const;
+
+/** Stable cache key for a clip's preview proxy (source + in-point + length + tier). */
+export function proxyKey(
+  m: { assetId: string; startSec: number; lengthSec: number },
+  shortSide: number = PROXY_SIDE.inline,
+): string {
+  return `${m.assetId}:${m.startSec.toFixed(3)}:${m.lengthSec.toFixed(3)}:${shortSide}`;
 }

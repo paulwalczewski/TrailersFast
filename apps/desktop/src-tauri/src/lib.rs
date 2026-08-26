@@ -182,12 +182,18 @@ fn generate_thumbnails_blocking(path: &str, at_secs: &[f64]) -> Result<Vec<Strin
     Ok(out)
 }
 
-/// Generate a small 360p proxy that IS the trimmed clip (starts at t=0), so the
+/// Generate a small proxy that IS the trimmed clip (starts at t=0), so the
 /// preview plays it linearly with no seeking → smooth playback. Cached by a hash
-/// of (path, start, length); returns the proxy file path.
+/// of the FFmpeg arguments, which carry the path, start and length; returns the
+/// proxy file path.
 #[tauri::command]
-async fn generate_proxy(path: String, start_sec: f64, length_sec: f64) -> Result<String, String> {
-    off_main_thread(move || generate_proxy_blocking(&path, start_sec, length_sec)).await
+async fn generate_proxy(
+    path: String,
+    start_sec: f64,
+    length_sec: f64,
+    short_side: u32,
+) -> Result<String, String> {
+    off_main_thread(move || generate_proxy_blocking(&path, start_sec, length_sec, short_side)).await
 }
 
 fn proxy_dir() -> std::path::PathBuf {
@@ -253,12 +259,61 @@ fn prune_dir(dir: &std::path::Path, max_age: std::time::Duration, max_bytes: u64
     freed
 }
 
-fn generate_proxy_blocking(path: &str, start_sec: f64, length_sec: f64) -> Result<String, String> {
+fn generate_proxy_blocking(
+    path: &str,
+    start_sec: f64,
+    length_sec: f64,
+    short_side: u32,
+) -> Result<String, String> {
     use std::hash::{Hash, Hasher};
     ensure_ffmpeg()?;
 
+    // Everything but the output path. Hashing the arguments themselves is what
+    // keys the cache, so editing the encode below re-makes stale proxies on its
+    // own — there is no separate recipe version to remember to bump.
+    let args: Vec<String> = [
+        "-y",
+        "-ss",
+        &format!("{start_sec:.3}"),
+        "-i",
+        path,
+        "-t",
+        &format!("{length_sec:.3}"),
+        "-vf",
+        &format!("scale=-2:{short_side}"),
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        // `ultrafast` at the default quality wrote ~1.1 Mbps for 360p — a 9.5s
+        // proxy landed at 1.3 MB, over the 1000 KiB Tauri's asset protocol serves
+        // per range request, so the webview had to come back for the tail mid-clip.
+        // `veryfast` at CRF 26 is a third of the bitrate and, having far fewer bits
+        // to write, encodes faster too: same clip, 554 KB in 0.04s against 1.26 MB
+        // in 0.29s. One request, a quarter of the cache.
+        "-preset",
+        "veryfast",
+        "-crf",
+        "26",
+        // A keyframe a second, so scrubbing decodes at most 30 frames rather than
+        // walking x264's default 250-frame GOP.
+        "-g",
+        "30",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+    ]
+    .iter()
+    .map(|a| a.to_string())
+    .collect();
+
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{path}|{start_sec}|{length_sec}").hash(&mut hasher);
+    args.hash(&mut hasher);
     let hash = hasher.finish();
 
     let dir = proxy_dir();
@@ -274,29 +329,7 @@ fn generate_proxy_blocking(path: &str, start_sec: f64, length_sec: f64) -> Resul
     }
 
     let mut cmd = FfmpegCommand::new();
-    cmd.arg("-y")
-        .arg("-ss")
-        .arg(format!("{start_sec:.3}"))
-        .input(path)
-        .arg("-t")
-        .arg(format!("{length_sec:.3}"))
-        .arg("-vf")
-        .arg("scale=-2:360")
-        .arg("-r")
-        .arg("30")
-        .arg("-c:v")
-        .arg("libx264")
-        .arg("-preset")
-        .arg("ultrafast")
-        .arg("-pix_fmt")
-        .arg("yuv420p")
-        .arg("-c:a")
-        .arg("aac")
-        .arg("-b:a")
-        .arg("128k")
-        .arg("-movflags")
-        .arg("+faststart")
-        .arg(out.to_string_lossy().to_string());
+    cmd.args(&args).arg(out.to_string_lossy().to_string());
     run_to_completion(cmd)?;
 
     if std::fs::metadata(&out).map(|m| m.len() > 0).unwrap_or(false) {
