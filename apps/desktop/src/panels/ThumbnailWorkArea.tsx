@@ -1,13 +1,11 @@
-import { THUMBNAIL_TEMPLATES } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useRef, useState } from "react";
 import { SourcePreview } from "./SourcePreview";
-import { ThumbnailPreview } from "./ThumbnailPreview";
+import { ThumbnailSection } from "./ThumbnailSection";
 import { ThumbnailSourceTimeline } from "./ThumbnailSourceTimeline";
 
 /** Thumbnail mode: pick frames off the source above, see the result below. */
 export function ThumbnailWorkArea() {
-  const template = useTrailerStore((s) => s.thumbnail.template);
   const frameCount = useTrailerStore((s) => s.thumbnail.frames.length);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -22,9 +20,6 @@ export function ThumbnailWorkArea() {
     prevFrames.current = frameCount;
   }, [frameCount]);
 
-  const templateLabel =
-    THUMBNAIL_TEMPLATES.find((t) => t.id === template)?.label ?? THUMBNAIL_TEMPLATES[0].label;
-
   return (
     <div ref={scrollRef} className="relative flex h-full flex-col gap-5 overflow-y-auto p-4">
       <section className="flex flex-col gap-2">
@@ -38,15 +33,7 @@ export function ThumbnailWorkArea() {
         <ThumbnailSourceTimeline playheadSec={playheadSec} onScrub={setPlayheadSec} />
       </section>
 
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Thumbnail</h2>
-          <span className="text-xs text-muted">
-            {templateLabel} · {frameCount} frame{frameCount === 1 ? "" : "s"}
-          </span>
-        </div>
-        <ThumbnailPreview />
-      </section>
+      <ThumbnailSection />
     </div>
   );
 }

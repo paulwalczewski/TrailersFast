@@ -1,15 +1,8 @@
 import { Label } from "@heroui/react";
-import { ASPECT_RATIOS, type AspectRatio, FIT_MODES, type FitMode } from "@trailerfast/core";
+import { FIT_MODES, type FitMode } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
+import { AspectRatioPicker } from "../ui/AspectRatioPicker";
 import { LabeledSlider, LabeledSwitch } from "../ui/Fields";
-
-const RATIO_ICON_MAX = 30;
-
-function ratioIcon(w: number, h: number): { width: number; height: number } {
-  return w >= h
-    ? { width: RATIO_ICON_MAX, height: Math.round((RATIO_ICON_MAX * h) / w) }
-    : { width: Math.round((RATIO_ICON_MAX * w) / h), height: RATIO_ICON_MAX };
-}
 
 /**
  * A video (translucent rectangle) laid over a dashed canvas frame: wider than
@@ -59,38 +52,10 @@ export function SettingsTab() {
         onChange={(v) => update({ flipHorizontal: v })}
       />
 
-      <div className="flex flex-col gap-1.5">
-        <Label>Aspect ratio</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {ASPECT_RATIOS.map((r) => {
-            const active = settings.aspectRatio === r.id;
-            const icon = ratioIcon(r.w, r.h);
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => update({ aspectRatio: r.id as AspectRatio })}
-                title={r.label}
-                className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 transition-colors ${
-                  active
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-surface-secondary text-muted hover:border-accent/50"
-                }`}
-              >
-                <span className="grid h-8 place-items-center">
-                  <span
-                    style={{ width: icon.width, height: icon.height }}
-                    className="rounded-[3px] border-2 border-current"
-                  />
-                </span>
-                <span className={`text-xs font-medium ${active ? "text-accent" : "text-foreground"}`}>
-                  {r.id}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <AspectRatioPicker
+        value={settings.aspectRatio}
+        onChange={(aspectRatio) => update({ aspectRatio })}
+      />
 
       <div className="flex flex-col gap-1.5">
         <Label>Fit</Label>
