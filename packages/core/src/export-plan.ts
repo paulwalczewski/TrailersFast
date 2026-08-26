@@ -3,6 +3,7 @@
  * the platform-agnostic ExportPlan the engine executes (FFmpeg on desktop).
  */
 import {
+  type AspectRatio,
   type ExportOpts,
   type ExportPreset,
   type FitMode,
@@ -30,14 +31,28 @@ const PRESET_TABLE: Record<ExportPreset, PresetRow> = {
   "low-480": { height: 480, crf: 28, ffPreset: "veryfast", audioKbps: 96 },
 };
 
-export const EXPORT_PRESETS: { id: ExportPreset; label: string; hint: string }[] = [
-  { id: "full-4k", label: "Full quality — 4K", hint: "3840×2160 · CRF 18" },
-  { id: "full-1080", label: "Full quality — 1080p", hint: "1920×1080 · CRF 18" },
-  { id: "standard-1080", label: "Standard — 1080p", hint: "1920×1080 · CRF 21" },
-  { id: "standard-720", label: "Standard — 720p", hint: "1280×720 · CRF 22" },
-  { id: "low-720", label: "Lower — 720p", hint: "smaller file · CRF 26" },
-  { id: "low-480", label: "Lower — 480p", hint: "smallest · CRF 28" },
+export const EXPORT_PRESETS: { id: ExportPreset; label: string }[] = [
+  { id: "full-4k", label: "Full quality — 4K" },
+  { id: "full-1080", label: "Full quality — 1080p" },
+  { id: "standard-1080", label: "Standard — 1080p" },
+  { id: "standard-720", label: "Standard — 720p" },
+  { id: "low-720", label: "Lower — 720p" },
+  { id: "low-480", label: "Lower — 480p" },
 ];
+
+/**
+ * The presets with their output size resolved against the chosen aspect ratio —
+ * a preset names its short side, so 4K is 3840×2160 at 16:9 but 2160×3840 at 9:16.
+ */
+export function exportPresetsFor(
+  ar: AspectRatio,
+): { id: ExportPreset; label: string; hint: string }[] {
+  return EXPORT_PRESETS.map(({ id, label }) => {
+    const row = PRESET_TABLE[id];
+    const { width, height } = canvasFor(ar, row.height);
+    return { id, label, hint: `${width}×${height} · CRF ${row.crf}` };
+  });
+}
 
 export type ResolvedEncode = {
   width: number;
