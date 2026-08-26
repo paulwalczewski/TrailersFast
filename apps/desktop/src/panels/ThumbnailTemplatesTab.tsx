@@ -1,7 +1,5 @@
 import { Button } from "@heroui/react";
 import {
-  ASPECT_RATIOS,
-  type AspectRatio,
   THUMBNAIL_TEMPLATES,
   type ThumbnailTemplate,
   byId,
@@ -10,11 +8,9 @@ import {
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useMemo, useState } from "react";
-import { LabeledSelect } from "../ui/Fields";
+import { AspectRatioPicker } from "../ui/AspectRatioPicker";
 import { Icon } from "../ui/Icon";
 import { ThumbnailFrameModal } from "./ThumbnailFrameModal";
-
-const RATIO_OPTIONS = ASPECT_RATIOS.map((r) => ({ id: r.id, label: r.label }));
 
 /** Miniature of the tile layout a template produces for `count` frames. */
 function LayoutDiagram({ template, count }: { template: ThumbnailTemplate; count: number }) {
@@ -85,11 +81,9 @@ export function ThumbnailTemplatesTab() {
         ))}
       </div>
 
-      <LabeledSelect
-        label="Aspect ratio"
-        selectedKey={thumbnail.aspectRatio}
-        options={RATIO_OPTIONS}
-        onChange={(id) => update({ aspectRatio: id as AspectRatio })}
+      <AspectRatioPicker
+        value={thumbnail.aspectRatio}
+        onChange={(aspectRatio) => update({ aspectRatio })}
       />
 
       <div className="flex flex-col gap-2">
