@@ -337,8 +337,8 @@ Already installed into this project so the implementing agent has authoritative,
 - **WebKit rendering (Tauri uses the OS WebView)** — the Remotion `<Player>` canvas may render subtly
   differently on macOS WebKit vs Windows WebView2. _Mitigation:_ test the Player on WebKit early (M1).
 - **Bundled FFmpeg signing/notarization on macOS** — the sidecar binary must be signed & notarized or
-  Gatekeeper blocks it. _Mitigation:_ handle in the packaging milestone; `ffmpeg-sidecar` can also
-  `auto_download()` at first run to shrink the installer.
+  Gatekeeper blocks it. _Mitigation:_ handle in the packaging milestone.
+  ~~`auto_download()` at first run~~ — rejected 2026-08-26, see `docs/adr/0001`.
 - **Large-file / many-clip performance** — Stage-1 re-encode is the cost; _mitigation:_ parallelize
   per-clip across CPU cores, cache intermediates, keep concat as stream-copy.
 - **Remotion licensing** — Player-only (no Remotion *rendering*) means no per-render fees; but a
@@ -385,7 +385,8 @@ Remaining defaults (2, 4, 5, 6) are baked into the plan; tell me which to change
 > shared logic seam (`core`/`state`/`video-engine`) already lives in packages, so portability is intact.
 
 ### ✅ Milestone 2 — FFmpeg plumbing (done)
-- **`ffmpeg-sidecar` v2.5** crate added; `auto_download()` fetches FFmpeg cross-platform on first use
+- **`ffmpeg-sidecar` v2.5** crate added; `auto_download()` fetched FFmpeg on first use
+  _(superseded 2026-08-26 — FFmpeg now ships as a bundled `externalBin`; `docs/adr/0001`)_
   (warmed in a background thread at startup). No system FFmpeg required. Bundling FFmpeg via
   `externalBin` for the shipped installer is deferred to the packaging milestone.
 - **`probe_media`** — real metadata via FFmpeg event parsing (`ParsedInputStream` → width/height/fps +
@@ -447,7 +448,8 @@ Remaining defaults (2, 4, 5, 6) are baked into the plan; tell me which to change
 > text is skipped). The packaging milestone will bundle a freetype ffmpeg so intro burn-in works
 > everywhere; the `drawtext` alpha/x/y/fontsize expressions mirror the Remotion preview animations.
 
-### ▶ Next: Milestone 6 — Packaging & polish
-Bundle a freetype-enabled FFmpeg via `externalBin` (so intro text works + offline installs), tighten the
-asset-protocol scope, code-sign & notarize (incl. the ffmpeg binary) for macOS/Windows, and add
-empty/error states + app icons.
+### ▶ Milestone 6 — Packaging & polish (in progress)
+- ✅ Bundle a freetype-enabled FFmpeg via `externalBin` — `docs/adr/0001`
+- ✅ Tighten the asset-protocol scope (+ explicit CSP) — `docs/adr/0002`
+- ☐ Code-sign & notarize (incl. the ffmpeg binary) for macOS/Windows
+- ☐ Empty/error states + app icons
