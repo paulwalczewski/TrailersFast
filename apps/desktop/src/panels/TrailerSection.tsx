@@ -1,14 +1,11 @@
 import type { PlayerRef } from "@remotion/player";
-import { type RefObject, useState } from "react";
-import { TrailerModal } from "./TrailerModal";
+import type { RefObject } from "react";
 import { TrailerPreview } from "./TrailerPreview";
 import { TrailerTimeline } from "./TrailerTimeline";
 
-type Props = { playerRef: RefObject<PlayerRef | null> };
+type Props = { playerRef: RefObject<PlayerRef | null>; onExpand: () => void };
 
-export function TrailerSection({ playerRef }: Props) {
-  const [frame, setFrame] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+export function TrailerSection({ playerRef, onExpand }: Props) {
 
   return (
     <section className="rounded-2xl border border-separator bg-surface-secondary p-3">
@@ -16,7 +13,7 @@ export function TrailerSection({ playerRef }: Props) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Trailer</h2>
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={onExpand}
           aria-label="Enlarge trailer"
           className="grid size-6 place-items-center rounded-md text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground"
         >
@@ -28,11 +25,9 @@ export function TrailerSection({ playerRef }: Props) {
 
       {/* Timeline on top, preview below */}
       <div className="flex flex-col gap-2">
-        <TrailerTimeline currentFrame={frame} onSeekFrame={(f) => playerRef.current?.seekTo(f)} />
-        <TrailerPreview playerRef={playerRef} onFrame={setFrame} maxHeight="30vh" />
+        <TrailerTimeline playerRef={playerRef} />
+        <TrailerPreview playerRef={playerRef} maxHeight="30vh" />
       </div>
-
-      {expanded ? <TrailerModal onClose={() => setExpanded(false)} /> : null}
     </section>
   );
 }

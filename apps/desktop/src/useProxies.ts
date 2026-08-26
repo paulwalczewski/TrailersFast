@@ -1,4 +1,4 @@
-import { byId, proxyKey } from "@trailerfast/core";
+import { PROXY_SIDE, byId, proxyKey } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useMemo, useRef } from "react";
 import { engine, isTauri } from "./engine";
@@ -11,7 +11,7 @@ import { createJobLimiter } from "./jobLimiter";
  * transcodes of footage the user never stopped on.
  */
 const SETTLE_MS = 300;
-/** Proxies are small (360p, ultrafast) but still one process each. */
+/** Proxies are small (360p) but still one process each. */
 const MAX_CONCURRENT_PROXY_JOBS = 3;
 
 const runProxyJob = createJobLimiter(MAX_CONCURRENT_PROXY_JOBS);
@@ -22,7 +22,7 @@ const runProxyJob = createJobLimiter(MAX_CONCURRENT_PROXY_JOBS);
  * back to the trimmed source until a proxy is ready — so debouncing here costs
  * nothing visible, it just skips the intermediate states of a gesture.
  */
-export function useProxies() {
+export function useProxies(shortSide: number = PROXY_SIDE.inline) {
   const markers = useTrailerStore((s) => s.markers);
   const assets = useTrailerStore((s) => s.assets);
   const proxies = useTrailerStore((s) => s.proxies);
@@ -35,7 +35,7 @@ export function useProxies() {
     if (!isTauri()) return;
     const timer = setTimeout(() => {
       for (const m of markers) {
-        const key = proxyKey(m);
+        const key = proxyKey(m, shortSide);
         if (proxies[key] || inFlight.current.has(key)) continue;
         const asset = assetsById[m.assetId];
         if (!asset || asset.loading) continue;
@@ -46,6 +46,7 @@ export function useProxies() {
             { path: asset.path, fileName: asset.fileName },
             m.startSec,
             m.lengthSec,
+            shortSide,
           ),
         )
           .then((path) => setProxy(key, path))
@@ -54,5 +55,5 @@ export function useProxies() {
       }
     }, SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [markers, assetsById, proxies, setProxy]);
+  }, [markers, assetsById, proxies, setProxy, shortSide]);
 }

@@ -26,6 +26,16 @@ export const PREVIEW_FPS = 30;
  */
 const PREMOUNT_FRAMES = PREVIEW_FPS; // ~1s lead
 
+/**
+ * How far a clip's <video> may drift from the timeline before Remotion seeks it
+ * back. The element plays on its own 1x clock while Remotion drives the frame,
+ * and when the two diverge the element reaches the hard stop at its out-point
+ * early and holds that last frame for the rest of the clip — a visible freeze.
+ * Remotion's own default is ~20 frames, and it clamps whatever it is given to
+ * the clip's length, so a large value on short clips means no leash at all.
+ */
+const MAX_DRIFT_FRAMES = 9;
+
 export type PreviewClip = {
   id: string;
   src: string;
@@ -106,8 +116,11 @@ function ClipVisual({ clip, fitMode, flipHorizontal }: ClipVisualProps) {
         src={clip.src}
         trimBefore={clip.trimBeforeInFrames}
         trimAfter={clip.trimBeforeInFrames + clip.durationInFrames}
-        pauseWhenBuffering
-        acceptableTimeShiftInSeconds={10}
+        acceptableTimeShiftInSeconds={MAX_DRIFT_FRAMES / PREVIEW_FPS}
+        // No `pauseWhenBuffering`: it gives every clip a veto over the player, so
+        // one element waiting on data stops the timeline, the audio and the other
+        // clips with it — and on WebKit it blocks the player at *every* clip start
+        // until the fresh element reports a frame.
         onLoadedData={markReady}
         onCanPlay={markReady}
         onTimeUpdate={videoReady ? undefined : markReady}

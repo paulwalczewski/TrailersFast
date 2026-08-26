@@ -1,6 +1,7 @@
 import { type PlacedAsset, placeAssets, totalDuration } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { type MouseEvent, type PointerEvent, useRef, useState } from "react";
+import { Playhead } from "../ui/Playhead";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
 
 type Props = { playheadSec: number; onScrub: (sec: number) => void };
@@ -144,12 +145,7 @@ export function ThumbnailSourceTimeline({ playheadSec, onScrub }: Props) {
       </div>
 
       {/* Playhead spanning ruler + filmstrip */}
-      <div
-        className="pointer-events-none absolute inset-y-2 w-[2px] bg-danger"
-        style={{ left: `calc(0.5rem + ${frac} * (100% - 1rem))` }}
-      >
-        <div className="absolute -left-[5px] -top-1 size-3 rounded-full border border-white bg-danger" />
-      </div>
+      <Playhead frac={frac} />
 
       {/* Custom cursor: add-frame (accent +) or remove (red trash) over a pick */}
       {cursor ? (

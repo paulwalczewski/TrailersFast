@@ -43,8 +43,13 @@ export function createTauriVideoEngine(): VideoEngine {
       });
     },
 
-    generateProxy(file: FileRef, startSec: number, lengthSec: number): Promise<string> {
-      return invoke<string>("generate_proxy", { path: file.path, startSec, lengthSec });
+    generateProxy(
+      file: FileRef,
+      startSec: number,
+      lengthSec: number,
+      shortSide: number,
+    ): Promise<string> {
+      return invoke<string>("generate_proxy", { path: file.path, startSec, lengthSec, shortSide });
     },
 
     toPlayableUrl(path: string): string {

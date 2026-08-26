@@ -37,7 +37,12 @@ export interface VideoEngine {
     opts?: { width?: number; lossless?: boolean },
   ): Promise<string[]>;
   /** Render a small proxy clip (trimmed, starts at 0) for smooth preview; returns its path. */
-  generateProxy(file: FileRef, startSec: number, lengthSec: number): Promise<string>;
+  generateProxy(
+    file: FileRef,
+    startSec: number,
+    lengthSec: number,
+    shortSide: number,
+  ): Promise<string>;
   /** Convert a local file path into a URL the webview/player can load. */
   toPlayableUrl(path: string): string;
   /**
