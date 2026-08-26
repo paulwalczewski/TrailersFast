@@ -259,6 +259,34 @@ pub fn mcp_respond(
     state.bridge.resolve(id, outcome);
 }
 
+/// Write a secret with owner-only permissions (0600).
+///
+/// `std::fs::write` creates 0644 under a typical umask, which would leave the
+/// bearer token readable by every other account on the machine — defeating the
+/// "random local processes can't drive the app" guarantee above. The mode is
+/// set on the handle before the bytes are written, so the token is never
+/// briefly world-readable on disk.
+fn write_private(path: &std::path::Path, contents: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path).map_err(|e| e.to_string())?;
+    // `create` keeps the old mode if the file already existed; re-assert it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+    }
+    f.write_all(contents.as_bytes()).map_err(|e| e.to_string())
+}
+
 /// Stable per-install bearer token so a saved client config keeps working
 /// across app restarts, while random local processes can't drive the app.
 pub fn load_or_create_token(app: &AppHandle) -> Result<String, String> {
@@ -268,11 +296,25 @@ pub fn load_or_create_token(app: &AppHandle) -> Result<String, String> {
     if let Ok(existing) = std::fs::read_to_string(&file) {
         let existing = existing.trim().to_string();
         if !existing.is_empty() {
+            // Tokens minted before the 0600 fix are on disk as 0644; tighten
+            // them in place rather than leaving old installs exposed.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = std::fs::metadata(&file) {
+                    if meta.permissions().mode() & 0o077 != 0 {
+                        let _ = std::fs::set_permissions(
+                            &file,
+                            std::fs::Permissions::from_mode(0o600),
+                        );
+                    }
+                }
+            }
             return Ok(existing);
         }
     }
     let token = uuid::Uuid::new_v4().simple().to_string();
-    std::fs::write(&file, &token).map_err(|e| e.to_string())?;
+    write_private(&file, &token)?;
     Ok(token)
 }
 

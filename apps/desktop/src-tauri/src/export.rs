@@ -3,8 +3,6 @@
 //! there is one process and one progress stream.
 
 use base64::Engine;
-use ffmpeg_sidecar::command::FfmpegCommand;
-use ffmpeg_sidecar::download::auto_download;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::Deserialize;
 
@@ -136,10 +134,18 @@ static BUNDLED_FONTS: &[(&str, &str, &[u8])] = &[
 /// a cache dir once and return the file path so freetype can read it.
 fn bundled_font_path(lower: &str) -> Option<String> {
     let (_, file, bytes) = BUNDLED_FONTS.iter().find(|(name, _, _)| lower.contains(name))?;
-    let dir = std::env::temp_dir().join("trailersfast-fonts");
+    // Per-process 0700 dir with a random name, kept alive for the process.
+    // The old fixed `/tmp/trailersfast-fonts` was pre-creatable: another local
+    // user could plant a file under the expected name and the `path.exists()`
+    // check would hand it straight to freetype, an unsafe C parser, during
+    // export.
+    static FONT_DIR: std::sync::OnceLock<Option<tempfile::TempDir>> = std::sync::OnceLock::new();
+    let dir = FONT_DIR
+        .get_or_init(|| tempfile::Builder::new().prefix("trailersfast-fonts-").tempdir().ok())
+        .as_ref()?
+        .path();
     let path = dir.join(file);
     if !path.exists() {
-        std::fs::create_dir_all(&dir).ok()?;
         std::fs::write(&path, bytes).ok()?;
     }
     Some(path.to_string_lossy().into_owned())
@@ -430,8 +436,10 @@ fn overlay_slide(animation: &str, e: f64, de: f64, t: &str) -> (String, String) 
 fn has_drawtext() -> bool {
     static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *CACHE.get_or_init(|| {
-        use ffmpeg_sidecar::paths::ffmpeg_path;
-        std::process::Command::new(ffmpeg_path())
+        let Ok(mut probe) = crate::ffmpeg_raw() else {
+            return false;
+        };
+        probe
             .args(["-hide_banner", "-filters"])
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).contains(" drawtext "))
@@ -545,7 +553,7 @@ pub fn run_export_inner(
     out_path: &str,
     mut on_frac: impl FnMut(f64),
 ) -> Result<(), String> {
-    auto_download().map_err(|e| format!("failed to obtain ffmpeg: {e}"))?;
+    crate::ensure_ffmpeg()?;
 
     let n = plan.clips.len();
     if n == 0 {
@@ -555,18 +563,26 @@ pub fn run_export_inner(
     let drawtext_font = if has_drawtext() { resolve_overlay_font(plan) } else { None };
 
     // Decode the UI-rendered title-card images (support emoji + fonts) to temp PNGs.
-    let decode_png = |b64: &Option<String>, name: &str| -> Option<std::path::PathBuf> {
+    // `TempPath`, not a bare PathBuf: the old predictable `tf_<name>_<pid>.png`
+    // was both pre-creatable as a symlink by another local user and never
+    // unlinked, so every export leaked a PNG into the shared temp dir.
+    let decode_png = |b64: &Option<String>, name: &str| -> Option<tempfile::TempPath> {
         b64.as_ref().and_then(|b64| {
             base64::engine::general_purpose::STANDARD.decode(b64).ok().and_then(|bytes| {
-                let p = std::env::temp_dir().join(format!("tf_{name}_{}.png", std::process::id()));
-                std::fs::write(&p, bytes).ok().map(|_| p)
+                let f = tempfile::Builder::new()
+                    .prefix(&format!("tf_{name}_"))
+                    .suffix(".png")
+                    .tempfile()
+                    .ok()?;
+                std::fs::write(f.path(), bytes).ok()?;
+                Some(f.into_temp_path())
             })
         })
     };
     let intro_png = decode_png(&plan.intro_image, "intro");
     let outro_png = decode_png(&plan.outro_image, "outro");
 
-    let mut cmd = FfmpegCommand::new();
+    let mut cmd = crate::ffmpeg_cmd()?;
     cmd.arg("-y").arg("-hide_banner").arg("-nostdin");
 
     // Real inputs, each fast-seek trimmed.
@@ -595,7 +611,7 @@ pub fn run_export_inner(
     }
 
     // Title-card image inputs (looping, bounded to each card's duration).
-    let mut img_input = |png: &Option<std::path::PathBuf>, card: &Option<ExportIntro>| -> Option<usize> {
+    let mut img_input = |png: &Option<tempfile::TempPath>, card: &Option<ExportIntro>| -> Option<usize> {
         let (png, card) = (png.as_ref()?, card.as_ref()?);
         cmd.arg("-loop")
             .arg("1")

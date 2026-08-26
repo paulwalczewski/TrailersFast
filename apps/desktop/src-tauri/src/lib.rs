@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tauri::Manager;
 use export::{ExportPlan, run_export_inner};
 use ffmpeg_sidecar::command::FfmpegCommand;
-use ffmpeg_sidecar::download::auto_download;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -24,17 +23,64 @@ struct MediaInfo {
     has_audio: bool,
 }
 
-/// Idempotent: downloads FFmpeg on first use, then a no-op. Blocks on first run.
-/// Success is memoized — even the "already installed" check spawns an
-/// `ffmpeg -version` subprocess, which would otherwise run per extracted frame.
-pub(crate) fn ensure_ffmpeg() -> Result<(), String> {
-    static READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    if READY.get().is_some() {
-        return Ok(());
+/// Absolute path to the FFmpeg we ship as a Tauri `externalBin` sidecar.
+///
+/// Tauri places `binaries/ffmpeg-<triple>` next to the app executable (stripped
+/// of the triple), so the sidecar is always `<exe dir>/ffmpeg`. Resolving it
+/// explicitly — rather than letting `ffmpeg_sidecar::paths::ffmpeg_path()`
+/// probe and then silently fall back to a bare `ffmpeg` from `$PATH` — is what
+/// keeps the guarantee `scripts/fetch-ffmpeg.sh` enforces: a build WITH
+/// `drawtext`. A `$PATH` build may lack freetype, and the only symptom would be
+/// the intro and watermark silently vanishing from the export.
+fn resolve_ffmpeg() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("cannot locate the app executable: {e}"))?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| "app executable has no parent directory".to_string())?;
+
+    let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    // The bundle always has the sidecar directly alongside the executable. The
+    // parent is only for `cargo test`, whose binaries live in `target/*/deps/`
+    // one level below where Tauri stages it. Both are inside our own build
+    // tree — unlike a `$PATH` lookup, neither can be an unvetted FFmpeg.
+    let candidates = [dir.join(name), dir.join("..").join(name)];
+    for path in &candidates {
+        if path.is_file() {
+            return Ok(path.clone());
+        }
     }
-    auto_download().map_err(|e| format!("failed to obtain ffmpeg: {e}"))?;
-    let _ = READY.set(());
-    Ok(())
+    Err(format!(
+        "bundled FFmpeg sidecar is missing at {}. Run scripts/fetch-ffmpeg.sh and rebuild.",
+        candidates[0].display()
+    ))
+}
+
+/// Memoized `resolve_ffmpeg()`. The result is cached either way, so a missing
+/// sidecar reports the same clear error on every call instead of degrading.
+pub(crate) fn ffmpeg_bin() -> Result<&'static std::path::Path, String> {
+    static BIN: std::sync::OnceLock<Result<std::path::PathBuf, String>> = std::sync::OnceLock::new();
+    BIN.get_or_init(resolve_ffmpeg)
+        .as_deref()
+        .map_err(|e| e.clone())
+}
+
+/// An `FfmpegCommand` bound to the bundled sidecar. Every FFmpeg invocation in
+/// the app goes through here so the binary is chosen in exactly one place.
+pub(crate) fn ffmpeg_cmd() -> Result<FfmpegCommand, String> {
+    Ok(FfmpegCommand::new_with_path(ffmpeg_bin()?))
+}
+
+/// A plain `std::process::Command` on the bundled sidecar, for the few probes
+/// that read stdout directly rather than the sidecar crate's stderr parser.
+pub(crate) fn ffmpeg_raw() -> Result<std::process::Command, String> {
+    Ok(std::process::Command::new(ffmpeg_bin()?))
+}
+
+/// Verify the bundled sidecar is present. Kept as a named step so callers read
+/// the same as before; it no longer touches the network.
+pub(crate) fn ensure_ffmpeg() -> Result<(), String> {
+    ffmpeg_bin().map(|_| ())
 }
 
 /// Spawn a fire-and-forget FFmpeg command and block until it finishes writing.
@@ -58,8 +104,21 @@ pub(crate) async fn off_main_thread<T: Send + 'static>(
 /// Probe a media file by parsing `ffmpeg -i <file>` output events. Uses ffmpeg
 /// (always present) rather than ffprobe (not downloaded on macOS).
 #[tauri::command]
-async fn probe_media(path: String) -> Result<MediaInfo, String> {
+async fn probe_media(app: tauri::AppHandle, path: String) -> Result<MediaInfo, String> {
+    // Every source file the user ingests is probed exactly once, right here, so
+    // this is the choke point for widening the asset-protocol scope. The static
+    // scope in tauri.conf.json stays narrow; the webview may only fetch files
+    // the user actually picked, instead of anything on the disk.
+    allow_asset(&app, &path);
     off_main_thread(move || probe_media_blocking(&path)).await
+}
+
+/// Grant the webview `asset:` read access to one file the user chose.
+fn allow_asset(app: &tauri::AppHandle, path: &str) {
+    use tauri::Manager;
+    if let Err(e) = app.asset_protocol_scope().allow_file(path) {
+        log::warn!("could not grant asset access to {path}: {e}");
+    }
 }
 
 fn probe_media_blocking(path: &str) -> Result<MediaInfo, String> {
@@ -74,7 +133,7 @@ fn probe_media_blocking(path: &str) -> Result<MediaInfo, String> {
     };
     let mut rotated_90 = false;
 
-    let iter = FfmpegCommand::new()
+    let iter = ffmpeg_cmd()?
         .arg("-hide_banner")
         .input(path)
         .spawn()
@@ -135,9 +194,17 @@ pub(crate) fn extract_frame_encoded(
 ) -> Result<Vec<u8>, String> {
     ensure_ffmpeg()?;
     let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let outfile = std::env::temp_dir().join(format!("tf_frame_{}_{job}.{ext}", std::process::id()));
+    // Random name in a 0700 dir — a predictable path in the shared temp dir is
+    // pre-creatable as a symlink by another local user, redirecting FFmpeg's
+    // `-y` write. `job` alone only prevented *self*-collisions.
+    let outfile = tempfile::Builder::new()
+        .prefix(&format!("tf_frame_{job}_"))
+        .suffix(&format!(".{ext}"))
+        .tempfile()
+        .map_err(|e| format!("could not stage frame: {e}"))?
+        .into_temp_path();
 
-    let mut cmd = FfmpegCommand::new();
+    let mut cmd = ffmpeg_cmd()?;
     cmd.arg("-y")
         .arg("-ss")
         .arg(format!("{at_sec}"))
@@ -188,12 +255,19 @@ fn generate_thumbnails_blocking(path: &str, at_secs: &[f64]) -> Result<Vec<Strin
 /// proxy file path.
 #[tauri::command]
 async fn generate_proxy(
+    app: tauri::AppHandle,
     path: String,
     start_sec: f64,
     length_sec: f64,
     short_side: u32,
 ) -> Result<String, String> {
-    off_main_thread(move || generate_proxy_blocking(&path, start_sec, length_sec, short_side)).await
+    let out = off_main_thread(move || {
+        generate_proxy_blocking(&path, start_sec, length_sec, short_side)
+    })
+    .await?;
+    // The proxy is what the preview actually plays; allow the file we just wrote.
+    allow_asset(&app, &out);
+    Ok(out)
 }
 
 fn proxy_dir() -> std::path::PathBuf {
@@ -328,7 +402,7 @@ fn generate_proxy_blocking(
         return Ok(out.to_string_lossy().into_owned());
     }
 
-    let mut cmd = FfmpegCommand::new();
+    let mut cmd = ffmpeg_cmd()?;
     cmd.args(&args).arg(out.to_string_lossy().to_string());
     run_to_completion(cmd)?;
 
@@ -445,7 +519,7 @@ mod tests {
         let plain = dir.join("tf_test_plain.mp4");
         let rotated = dir.join("tf_test_rotated.mp4");
 
-        let mut make = FfmpegCommand::new();
+        let mut make = ffmpeg_cmd().unwrap();
         make.arg("-y")
             .arg("-f")
             .arg("lavfi")
@@ -455,7 +529,7 @@ mod tests {
             .arg(plain.to_string_lossy().to_string());
         run_to_completion(make).unwrap();
 
-        let mut remux = FfmpegCommand::new();
+        let mut remux = ffmpeg_cmd().unwrap();
         remux
             .arg("-y")
             .arg("-display_rotation")
@@ -475,9 +549,13 @@ mod tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Warm the FFmpeg download in the background so the first probe is fast.
+    // Resolve (and memoize) the bundled sidecar off the main thread so the
+    // first probe doesn't pay for the filesystem check, and a missing binary is
+    // logged at startup rather than surfacing as a failed export later.
     std::thread::spawn(|| {
-        let _ = auto_download();
+        if let Err(e) = ffmpeg_bin() {
+            log::error!("{e}");
+        }
     });
 
     tauri::Builder::default()

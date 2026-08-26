@@ -3,7 +3,6 @@
 //! format. Everything goes through the same bundled FFmpeg the trailer uses.
 
 use base64::Engine;
-use ffmpeg_sidecar::command::FfmpegCommand;
 
 use crate::{extract_frame_encoded, off_main_thread, run_to_completion};
 
@@ -39,11 +38,13 @@ pub async fn extract_frames(
 /// Read a capability list out of `ffmpeg -<what>` (stdout, so it can't go
 /// through the sidecar's stderr event parser). Cached per process.
 fn ffmpeg_lists(what: &'static str) -> String {
-    use ffmpeg_sidecar::paths::ffmpeg_path;
-    std::process::Command::new(ffmpeg_path())
-        .args(["-hide_banner", what])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    crate::ffmpeg_raw()
+        .map(|mut c| {
+            c.args(["-hide_banner", what])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .unwrap_or_default()
+        })
         .unwrap_or_default()
 }
 
@@ -112,10 +113,21 @@ pub async fn save_image(
             return Ok(out_path);
         }
 
-        let temp = std::env::temp_dir().join(format!("tf_thumb_{}.png", std::process::id()));
-        std::fs::write(&temp, &bytes).map_err(|e| format!("could not stage image: {e}"))?;
+        // A randomly-named 0600 file in a private dir: a predictable name in the
+        // shared temp dir lets another local user pre-create it as a symlink and
+        // redirect this write, and keying it on the pid alone made two
+        // concurrent saves clobber each other's staging file.
+        let temp = tempfile::Builder::new()
+            .prefix("tf_thumb_")
+            .suffix(".png")
+            .tempfile()
+            .map_err(|e| format!("could not stage image: {e}"))?;
+        std::fs::write(temp.path(), &bytes).map_err(|e| format!("could not stage image: {e}"))?;
+        // Close our handle but keep the path; it is unlinked when `temp` drops,
+        // including on every early return below.
+        let temp = temp.into_temp_path();
 
-        let mut cmd = FfmpegCommand::new();
+        let mut cmd = crate::ffmpeg_cmd()?;
         cmd.arg("-y").input(temp.to_string_lossy().to_string());
         match format.as_str() {
             "jpeg" => {
@@ -125,7 +137,6 @@ pub async fn save_image(
             }
             "webp" => {
                 if !has_webp() {
-                    let _ = std::fs::remove_file(&temp);
                     return Err("this FFmpeg build has no WebP encoder — try PNG or JPEG".into());
                 }
                 cmd.arg("-c:v")
@@ -137,7 +148,6 @@ pub async fn save_image(
             }
             "avif" => {
                 let Some(encoder) = av1_encoder() else {
-                    let _ = std::fs::remove_file(&temp);
                     return Err("this FFmpeg build cannot write AVIF — try WebP or PNG".into());
                 };
                 // AV1 CRF runs 0 (best) .. 63 (worst).
@@ -155,14 +165,11 @@ pub async fn save_image(
                 }
             }
             other => {
-                let _ = std::fs::remove_file(&temp);
                 return Err(format!("unsupported image format \"{other}\""));
             }
         }
         cmd.arg(&out_path);
-        let result = run_to_completion(cmd);
-        let _ = std::fs::remove_file(&temp);
-        result?;
+        run_to_completion(cmd)?;
 
         if std::fs::metadata(&out_path).map(|m| m.len() > 0).unwrap_or(false) {
             Ok(out_path)

@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use serde::Serialize;
 
@@ -40,7 +39,7 @@ pub fn detect_scenes_blocking(path: &str, threshold: f64) -> Result<Vec<Scene>, 
     // Downscale before scoring: scene detection compares frame deltas, which
     // survives 320px just fine and decodes several times faster than full-res.
     let filter = format!("scale=320:-2,select='gt(scene,{threshold:.2})',metadata=print");
-    let iter = FfmpegCommand::new()
+    let iter = crate::ffmpeg_cmd()?
         .arg("-hide_banner")
         .input(path)
         .args(["-vf", &filter, "-an", "-sn", "-f", "null", "-"])

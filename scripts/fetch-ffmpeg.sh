@@ -50,7 +50,10 @@ esac
 chmod +x "$OUT"
 
 # Sanity check: must have the drawtext filter (freetype) or intro/watermark won't render.
-if "$OUT" -hide_banner -filters 2>/dev/null | grep -q " drawtext "; then
+# (Capture first: piping straight into `grep -q` makes FFmpeg die on SIGPIPE,
+# which `set -o pipefail` would report as a failed check.)
+FILTERS="$("$OUT" -hide_banner -filters 2>/dev/null || true)"
+if grep -q " drawtext " <<<"$FILTERS"; then
   echo "✓ $OUT  ($("$OUT" -hide_banner -version 2>/dev/null | head -1 | cut -c1-40))"
   echo "✓ drawtext filter present"
 else

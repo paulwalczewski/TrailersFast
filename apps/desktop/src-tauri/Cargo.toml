@@ -32,3 +32,15 @@ axum = "0.8"
 tokio = { version = "1", features = ["net", "sync", "time", "macros"] }
 tokio-util = "0.7"
 uuid = { version = "1", features = ["v4"] }
+tempfile = "3.27.0"
+
+# Default release settings leave a lot on the table for a desktop bundle: no
+# cross-crate inlining, full debug symbols in the shipped binary, and unwind
+# tables for panics we never catch. `opt-level = "s"` is deliberate over "z" —
+# it keeps the loop vectorisation the frame/preview paths depend on.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -21,3 +21,9 @@ apps/desktop/src-tauri/binaries/
 # local agent tooling
 .claude/
 .agents/
+
+# graphify knowledge graph (derived; rebuild with /graphify . --update)
+graphify-out/
+
+# stray npm lockfile — this workspace is pnpm (see packageManager in package.json)
+package-lock.json
