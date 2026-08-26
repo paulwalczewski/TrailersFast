@@ -1,14 +1,14 @@
 import type { PlayerRef } from "@remotion/player";
 import type { RefObject } from "react";
+import { MarkFirstClipOverlay } from "./OnboardingOverlay";
 import { TrailerPreview } from "./TrailerPreview";
 import { TrailerTimeline } from "./TrailerTimeline";
 
 type Props = { playerRef: RefObject<PlayerRef | null>; onExpand: () => void };
 
 export function TrailerSection({ playerRef, onExpand }: Props) {
-
   return (
-    <section className="rounded-2xl border border-separator bg-surface-secondary p-3">
+    <section className="relative rounded-2xl border border-separator bg-surface-secondary p-3">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Trailer</h2>
         <button
@@ -28,6 +28,8 @@ export function TrailerSection({ playerRef, onExpand }: Props) {
         <TrailerTimeline playerRef={playerRef} />
         <TrailerPreview playerRef={playerRef} maxHeight="30vh" />
       </div>
+
+      <MarkFirstClipOverlay />
     </section>
   );
 }
