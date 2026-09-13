@@ -61,10 +61,12 @@ case "$TRIPLE" in
     cp "$TMP/ffmpeg" "$OUT"
     ;;
   x86_64-unknown-linux-gnu)
-    # John Van Sickle static build (freetype/fontconfig).
-    fetch "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" "$TMP/ff.tar.xz"
+    # BtbN static GPL build off the 8.1 release branch (freetype/fontconfig/harfbuzz).
+    # Not John Van Sickle's: since FFmpeg 7.0 drawtext also needs libharfbuzz,
+    # which that build lacks, so it fails the check below.
+    fetch "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz" "$TMP/ff.tar.xz"
     tar -xf "$TMP/ff.tar.xz" -C "$TMP"
-    cp "$TMP"/ffmpeg-*-amd64-static/ffmpeg "$OUT"
+    cp "$TMP"/ffmpeg-n8.1-*-linux64-gpl-8.1/bin/ffmpeg "$OUT"
     ;;
   *)
     echo "No download rule for $TRIPLE." >&2
