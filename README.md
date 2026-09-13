@@ -1,10 +1,23 @@
-# Trailers Fast
+<h1 align="center">Trailers Fast</h1>
 
-**The fastest way from a folder of long videos to a finished trailer.** Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling — and every one of those steps can also be driven by an AI agent over MCP.
+<p align="center">
+  <strong>The fastest way from a folder of long videos to a finished trailer.</strong><br>
+  Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling.<br>
+  Every step can also be driven by an AI agent over MCP.
+</p>
+
+<p align="center">
+  <a href="https://github.com/paulwalczewski/trailersfast/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/paulwalczewski/trailersfast/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Platform: macOS | Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
+  <a href="https://v2.tauri.app"><img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white"></a>
+  <a href="https://modelcontextprotocol.io"><img alt="MCP server built in" src="https://img.shields.io/badge/MCP-server%20built%20in-8A2BE2"></a>
+  <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
+</p>
 
 Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player for preview · bundled FFmpeg for export. Nothing leaves your machine.
 
----
+> **Status:** pre-release (v0.1.0). There are no packaged installers yet; [build it from source](#getting-started) in a couple of minutes.
 
 ## Why it's fast
 
@@ -20,23 +33,25 @@ That's the whole workflow. Reordering is drag-and-drop, trimming is dragging a c
 
 Trailers Fast runs a local, token-gated [MCP](https://modelcontextprotocol.io) server. Point Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI or any Streamable-HTTP MCP client at it and say *"make me a 30-second trailer from these files"*. The agent gets 22 tools that mirror everything the UI can do:
 
-- **See** — `list_assets`, `get_project`, `detect_scenes` (FFmpeg scene-change detection with scores), `get_frames` (actual stills the model can look at)
-- **Edit** — `add_assets`, `add_clip` / `update_clip` / `remove_clip`, `set_clip_transform`, `update_settings`, `update_intro` / `update_outro` / `update_watermark`
-- **Thumbnail** — `add_thumbnail_frame`, `update_thumbnail`, `update_thumbnail_title`, `set_thumbnail_frame_transform`
-- **Ship** — `export_trailer`, `export_thumbnail`
+| | Tools |
+|---|---|
+| **See** | `list_assets`, `get_project`, `detect_scenes` (FFmpeg scene-change detection with scores), `get_frames` (actual stills the model can look at) |
+| **Edit** | `add_assets`, `add_clip` / `update_clip` / `remove_clip`, `set_clip_transform`, `update_settings`, `update_intro` / `update_outro` / `update_watermark` |
+| **Thumbnail** | `add_thumbnail_frame`, `update_thumbnail`, `update_thumbnail_title`, `set_thumbnail_frame_transform` |
+| **Ship** | `export_trailer`, `export_thumbnail` |
 
-You watch the trailer assemble live in the app while the agent works, and every tool call is a normal undo step. The **AI · MCP** button in the header shows connection status, ready-to-paste config snippets for each client, and a log of what the agent did.
+You watch the trailer assemble live in the app while the agent works, and every tool call is a normal undo step. The **AI · MCP** button in the header shows connection status, ready-to-paste config snippets for each client, and a log of what the agent did. See [Connecting an AI agent](#connecting-an-ai-agent) below.
 
 ## Everything else
 
 | | |
 |---|---|
-| **Title cards** | Intro and outro with heading + description, 30 fonts (7 bundled so they render identically everywhere), weight, size, color, alignment, hard shadow, and four animations — fade, slide, slide-up, zoom. Emoji work. |
+| **Title cards** | Intro and outro with heading + description, 30 fonts (7 bundled so they render identically everywhere), weight, size, color, alignment, hard shadow, and four animations: fade, slide, slide-up, zoom. Emoji work. |
 | **Watermark** | Text in any corner, with opacity, font, shadow. Burned in by FFmpeg `drawtext`. |
-| **Aspect ratios** | 16:9, 9:16, 1:1, 4:5, 4:3 — for the trailer and, independently, the thumbnail. Cover (crop) or contain (letterbox). |
+| **Aspect ratios** | 16:9, 9:16, 1:1, 4:5, 4:3 for the trailer and, independently, the thumbnail. Cover (crop) or contain (letterbox). |
 | **Per-clip framing** | Pan and zoom any clip inside the canvas; offsets are normalized so black bars are impossible. Also horizontal flip. |
 | **Thumbnails** | Second editor sharing the same footage: pick frames off the filmstrip, lay them out as a mosaic, stripes, or a single frame, add a title with a readability scrim, export PNG / JPEG / WebP / AVIF up to 4K. |
-| **Export presets** | 4K → 480p, H.264 or H.265, tuned CRF/preset/audio per tier, sizes shown for your aspect ratio. |
+| **Export presets** | 4K down to 480p, H.264 or H.265, tuned CRF/preset/audio per tier, sizes shown for your aspect ratio. |
 | **Preview = export** | The preview's framing math, title cards and thumbnail renderer are the *same code* the export uses. |
 
 ## Getting started
@@ -44,8 +59,8 @@ You watch the trailer assemble live in the app while the agent works, and every 
 Prerequisites: [Rust](https://rustup.rs) (stable), Node 22+, [pnpm](https://pnpm.io) 10, and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS (Xcode Command Line Tools on macOS; `webkit2gtk` and friends on Linux).
 
 ```sh
-git clone https://github.com/paulwalczewski/quicktrailers.git trailerfast
-cd trailerfast
+git clone https://github.com/paulwalczewski/trailersfast.git
+cd trailersfast
 pnpm install
 scripts/fetch-ffmpeg.sh   # one-time: downloads a freetype-enabled FFmpeg sidecar for your platform
 pnpm dev                  # launches the desktop app with hot reload
@@ -53,42 +68,56 @@ pnpm dev                  # launches the desktop app with hot reload
 
 `scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64) and Linux x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it in CI.
 
-Build an installer with `pnpm tauri build`. Other useful commands:
-
-```sh
-pnpm typecheck      # tsc across the workspace
-pnpm lint           # Biome (lint + format check)
-pnpm format         # Biome, writing fixes
-cargo test          # Rust unit tests (run in apps/desktop/src-tauri)
-```
+Build an installer for your platform with `pnpm tauri build`.
 
 ### Connecting an AI agent
 
-Open the app → **AI · MCP** → pick your client tab → copy the snippet. For Claude Code it's one line:
+Open the app, click **AI · MCP**, pick your client tab and copy the snippet. For Claude Code it's one line:
 
 ```sh
-claude mcp add --transport http trailerfast http://127.0.0.1:4823/mcp --header "Authorization: Bearer <token from the app>"
+claude mcp add --transport http trailersfast http://127.0.0.1:4823/mcp --header "Authorization: Bearer <token from the app>"
 ```
 
-The server binds to `127.0.0.1` only, requires the per-install bearer token, rejects cross-origin browser requests, and can be switched off from the same dialog. An agent can read any video the user can and write exports anywhere the user can — but never over an existing file.
+The server binds to `127.0.0.1` only, requires the per-install bearer token, rejects cross-origin browser requests, and can be switched off from the same dialog. An agent can read any video the user can and write exports anywhere the user can, but never over an existing file.
 
-## How it's put together
+## Development
+
+```sh
+pnpm dev            # desktop app with hot reload
+pnpm dev:web        # just the Vite frontend in a browser (no Tauri APIs)
+pnpm typecheck      # tsc across the workspace
+pnpm lint           # Biome (lint + format check)
+pnpm format         # Biome, writing fixes
+pnpm tauri build    # platform installer
+```
+
+Rust lives in `apps/desktop/src-tauri`:
+
+```sh
+cd apps/desktop/src-tauri
+cargo test                                   # unit tests (needs the FFmpeg sidecar from fetch-ffmpeg.sh)
+cargo clippy --all-targets -- -D warnings    # kept warning-free
+```
+
+[CI](.github/workflows/ci.yml) runs all of the above on every push and pull request: the web checks on Ubuntu, clippy and the Rust tests on Ubuntu and macOS.
+
+### How it's put together
 
 ```
 apps/desktop/          Tauri app: React UI (src/) + Rust backend (src-tauri/)
   src-tauri/src/
     lib.rs             Tauri commands: probe, thumbnails, preview proxies, export
-    export.rs          The FFmpeg filter graph: trim → normalize → concat → overlays → encode
+    export.rs          The FFmpeg filter graph: trim, normalize, concat, overlays, encode
     mcp.rs             Embedded MCP server (rmcp + axum) and its 22 tools
     scenes.rs          Scene-change detection
     image.rs           Frame extraction + still-image encoding for the thumbnail editor
 packages/core/         Pure domain model + math shared by preview and export (no React, no Tauri)
 packages/state/        Zustand store with undo/redo
-packages/video-engine/ The UI ↔ platform seam; the only place that imports @tauri-apps/api
+packages/video-engine/ The UI to platform seam; the only place that imports @tauri-apps/api
 docs/adr/              Decisions that aren't obvious from the code
 ```
 
-UI code never calls Tauri directly — it goes through the `VideoEngine` interface in `packages/video-engine`, so a web build is a second implementation of that interface away.
+UI code never calls Tauri directly. It goes through the `VideoEngine` interface in `packages/video-engine`, so a web build is a second implementation of that interface away. The reasoning behind the stack is in [PLAN.md](PLAN.md); decisions made since are in [docs/adr](docs/adr).
 
 ## Licensing
 
@@ -101,4 +130,8 @@ The bundled fonts (Pacifico, Permanent Marker, Great Vibes, Lobster, Bangers, Sa
 
 ## Contributing
 
-Issues and PRs welcome. Before opening a PR: `pnpm lint && pnpm typecheck` and `cargo test` should pass, and if you touch the export pipeline read `docs/adr/` first — a few invariants there fail silently when broken. Commit messages are one sentence saying what changed for the user.
+Issues and PRs welcome. Before opening a PR:
+
+- `pnpm lint && pnpm typecheck` and `cargo test` should pass (CI checks the same things).
+- If you touch the export pipeline, read [docs/adr](docs/adr) first. A few invariants there fail silently when broken.
+- Commit messages are one sentence saying what changed for the user.

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  rust:
+    name: Rust tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # tauri-build refuses to compile without the externalBin sidecar, and the
+      # probe test runs the real binary, so CI needs the same FFmpeg the app
+      # ships. Cached per platform so it is only downloaded when the fetch
+      # script changes.
+      - name: Restore FFmpeg sidecar
+        id: ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: apps/desktop/src-tauri/binaries
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-ffmpeg.sh') }}
+      - name: Fetch FFmpeg sidecar
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        working-directory: ${{ github.workspace }}
+        run: scripts/fetch-ffmpeg.sh
+
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

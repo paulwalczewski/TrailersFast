@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Trailers Fast — mark spots on long videos, get a short trailer"
 authors = ["Paul Walczewski"]
 license = "MIT"
-repository = "https://github.com/paulwalczewski/quicktrailers"
+repository = "https://github.com/paulwalczewski/trailersfast"
 edition = "2021"
 rust-version = "1.77.2"
 
