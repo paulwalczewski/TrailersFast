@@ -32,5 +32,8 @@ These have no test that catches them and no error message that points at the cau
 ## Conventions
 
 - pnpm workspaces (`pnpm@10.32.1`). Never run `npm install` — it writes a stray lockfile.
+- `pnpm lint` (Biome) and `pnpm typecheck` must pass; `cargo clippy` is kept warning-free.
+- Shared UI lives in `apps/desktop/src/ui/` — scrub rulers, modal headers, the pan/zoom
+  editor, the overlay-text form. Reach for those before adding a second copy in a panel.
 - Commits go to `main` directly; message is a sentence saying what changed for the user.
 - `graphify-out/` is a derived knowledge graph, gitignored. Rebuild: `/graphify . --update`.

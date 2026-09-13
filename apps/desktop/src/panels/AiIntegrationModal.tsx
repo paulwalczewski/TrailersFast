@@ -2,6 +2,7 @@ import { Switch } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
 import { isTauri } from "../engine";
 import { useAgentBeacon, useMcpActivity } from "../mcp/activity";
+import { ModalHeader } from "../ui/ModalHeader";
 import { ModalShell } from "../ui/ModalShell";
 import { Spinner } from "../ui/Spinner";
 
@@ -167,28 +168,17 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       className="flex max-h-[85vh] w-[640px] max-w-full flex-col rounded-2xl bg-surface p-5 shadow-xl"
     >
-      <div className="mb-1 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">AI integration</h2>
-          {working ? (
-            <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">
-              <Spinner className="size-3 border-success border-t-transparent" />
-              Agent working…
-            </span>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground"
-        >
-          ✕
-        </button>
-      </div>
+      <ModalHeader title="AI integration" onClose={onClose}>
+        {working ? (
+          <span className="flex animate-pulse items-center gap-1.5 rounded-full bg-success/15 px-2.5 py-1 text-xs font-medium text-success">
+            <Spinner className="size-3 border-success border-t-transparent" />
+            Agent working…
+          </span>
+        ) : null}
+      </ModalHeader>
       <p className="mb-4 text-xs text-muted">
-        Connect a local AI agent over MCP to import videos, pick scenes, tune settings and export
-        — while you watch the trailer assemble live. Keep the app open while the agent works.
+        Connect a local AI agent over MCP to import videos, pick scenes, tune settings and export —
+        while you watch the trailer assemble live. Keep the app open while the agent works.
       </p>
 
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto">
@@ -278,8 +268,8 @@ export function AiIntegrationModal({ onClose }: { onClose: () => void }) {
           </div>
           {entries.length === 0 ? (
             <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted">
-              No tool calls yet. Once an agent is connected, its actions show up here — every one
-              of them is undoable with ⌘Z.
+              No tool calls yet. Once an agent is connected, its actions show up here — every one of
+              them is undoable with ⌘Z.
             </p>
           ) : (
             // No own scrollbar — the modal body is the single scroll container.

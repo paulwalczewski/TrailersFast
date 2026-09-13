@@ -86,11 +86,7 @@ export function createTauriVideoEngine(): VideoEngine {
       });
     },
 
-    export(
-      plan: ExportPlan,
-      outPath: string,
-      onProgress: (p: Progress) => void,
-    ): Promise<string> {
+    export(plan: ExportPlan, outPath: string, onProgress: (p: Progress) => void): Promise<string> {
       const channel = new Channel<Progress>();
       channel.onmessage = onProgress;
       return invoke<string>("export_trailer", { plan, outPath, onProgress: channel });

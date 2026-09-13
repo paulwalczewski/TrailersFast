@@ -4,17 +4,11 @@
  * losslessly extracted frames — then FFmpeg encodes the PNG into the chosen
  * format. Shared by the export dialog (and any future MCP tool).
  */
-import {
-  type ImageFormat,
-  byId,
-  canvasFor,
-  clipRenderBox,
-  templateCells,
-} from "@trailerfast/core";
+import { byId, canvasFor, clipRenderBox, type ImageFormat, templateCells } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { engine } from "./engine";
 import { ensureFontsLoaded } from "./fonts";
-import { type LoadedFrame, drawThumbnail } from "./thumbnail/drawThumbnail";
+import { drawThumbnail, type LoadedFrame } from "./thumbnail/drawThumbnail";
 import { extractFrame } from "./thumbnail/frameImages";
 
 /** Composite the current thumbnail at `width`×`height`; returns base64 PNG. */

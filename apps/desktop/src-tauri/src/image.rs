@@ -58,12 +58,7 @@ fn av1_encoder() -> Option<&'static str> {
         if !ffmpeg_lists("-muxers").contains(" avif ") {
             return None;
         }
-        for enc in ["libsvtav1", "libaom-av1"] {
-            if encoders.contains(enc) {
-                return Some(enc);
-            }
-        }
-        None
+        ["libsvtav1", "libaom-av1"].into_iter().find(|enc| encoders.contains(enc))
     })
 }
 
@@ -128,7 +123,7 @@ pub async fn save_image(
         let temp = temp.into_temp_path();
 
         let mut cmd = crate::ffmpeg_cmd()?;
-        cmd.arg("-y").input(temp.to_string_lossy().to_string());
+        cmd.arg("-y").input(temp.to_string_lossy());
         match format.as_str() {
             "jpeg" => {
                 // FFmpeg's -q:v runs 2 (best) .. 31 (worst) — invert the slider.

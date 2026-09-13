@@ -1,8 +1,10 @@
-import { type PlacedAsset, centeredClip, placeAssets, totalDuration } from "@trailerfast/core";
+import { centeredClip, type PlacedAsset, placeAssets, totalDuration } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type MouseEvent, type PointerEvent, useRef, useState } from "react";
+import { type MouseEvent, useCallback, useRef, useState } from "react";
 import { Playhead } from "../ui/Playhead";
+import { ScrubRuler, useScrubRuler } from "../ui/ScrubRuler";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
+import { TimelineCursor, TRASH_PATH, useTimelineCursor } from "../ui/TimelineCursor";
 
 type Props = { playheadSec: number; onScrub: (sec: number) => void };
 type Ghost = { assetId: string; left: number; width: number };
@@ -16,10 +18,9 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
 
   const placed = placeAssets(assets);
   const total = totalDuration(placed);
-  const rulerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrubbing = useRef(false);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const ruler = useScrubRuler(useCallback((frac) => onScrub(frac * total), [onScrub, total]));
+  const cursor = useTimelineCursor(containerRef);
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const [overMarker, setOverMarker] = useState(false);
 
@@ -29,32 +30,6 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
         Select videos in the Assets tab — they appear here to mark clips.
       </div>
     );
-  }
-
-  function scrubFrom(clientX: number) {
-    const el = rulerRef.current;
-    if (!el || total === 0) return;
-    const rect = el.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    onScrub(frac * total);
-  }
-  function onRulerDown(e: PointerEvent) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    scrubbing.current = true;
-    scrubFrom(e.clientX);
-  }
-  function onRulerMove(e: PointerEvent) {
-    if (scrubbing.current) scrubFrom(e.clientX);
-  }
-  function stopScrub() {
-    scrubbing.current = false;
-  }
-
-  function onCircleMove(e: MouseEvent<HTMLDivElement>) {
-    const c = containerRef.current;
-    if (!c) return;
-    const rect = c.getBoundingClientRect();
-    setCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   }
 
   function onBlockMove(e: MouseEvent<HTMLDivElement>, p: PlacedAsset) {
@@ -81,23 +56,14 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
 
   return (
     <div ref={containerRef} className="relative rounded-xl border border-separator bg-surface p-2">
-      {/* Scrub ruler */}
-      <div
-        ref={rulerRef}
-        onPointerDown={onRulerDown}
-        onPointerMove={onRulerMove}
-        onPointerUp={stopScrub}
-        onPointerCancel={stopScrub}
-        className="mb-1 h-5 cursor-ew-resize rounded bg-surface-tertiary"
-        title="Drag to scrub the source"
-      />
+      <ScrubRuler ruler={ruler} title="Drag to scrub the source" />
 
       {/* Filmstrip (fills width, proportional to duration) */}
       <div
         className="flex h-16 cursor-none items-stretch gap-1"
-        onMouseMove={onCircleMove}
+        onMouseMove={cursor.onMouseMove}
         onMouseLeave={() => {
-          setCursor(null);
+          cursor.hide();
           setGhost(null);
           setOverMarker(false);
         }}
@@ -169,25 +135,16 @@ export function SourceTimeline({ playheadSec, onScrub }: Props) {
       <Playhead frac={frac} />
 
       {/* Custom cursor: mark-here (accent + pin) or delete (red + trash) over a mark */}
-      {cursor ? (
-        <div
-          className={`pointer-events-none absolute z-10 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white text-white shadow-lg ${
-            overMarker ? "bg-danger" : "bg-accent"
-          }`}
-          style={{ left: cursor.x, top: cursor.y }}
-        >
-          {overMarker ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10Z" />
-              <circle cx="12" cy="11" r="2" fill="currentColor" stroke="none" />
-            </svg>
-          )}
-        </div>
-      ) : null}
+      <TimelineCursor position={cursor.position} danger={overMarker}>
+        {overMarker ? (
+          <path d={TRASH_PATH} />
+        ) : (
+          <>
+            <path d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10Z" />
+            <circle cx="12" cy="11" r="2" fill="currentColor" stroke="none" />
+          </>
+        )}
+      </TimelineCursor>
     </div>
   );
 }

@@ -296,8 +296,8 @@ pub fn load_or_create_token(app: &AppHandle) -> Result<String, String> {
     if let Ok(existing) = std::fs::read_to_string(&file) {
         let existing = existing.trim().to_string();
         if !existing.is_empty() {
-            // Tokens minted before the 0600 fix are on disk as 0644; tighten
-            // them in place rather than leaving old installs exposed.
+            // A token file that is group/world-readable (e.g. restored from a
+            // backup with a loose umask) is tightened in place.
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -657,6 +657,24 @@ impl TrailerMcp {
     }
 }
 
+/// An agent may write anywhere the user can, but never silently over something
+/// that already exists — the user picks a name in the save dialog; an agent
+/// gets an error and picks another.
+fn check_output_path(path: &str) -> Result<(), McpError> {
+    let path = std::path::Path::new(path);
+    if !path.is_absolute() {
+        return Err(tool_err("output_path must be absolute".into()));
+    }
+    if path.exists() {
+        return Err(tool_err(format!("output_path already exists: {}", path.display())));
+    }
+    match path.parent() {
+        Some(dir) if dir.is_dir() => Ok(()),
+        Some(dir) => Err(tool_err(format!("output directory does not exist: {}", dir.display()))),
+        None => Err(tool_err("output_path has no parent directory".into())),
+    }
+}
+
 /// Run blocking FFmpeg work off the async runtime, with a hard cap.
 async fn blocking<T: Send + 'static>(
     limit: Duration,
@@ -912,11 +930,7 @@ impl TrailerMcp {
         if !p.output_path.to_lowercase().ends_with(&format!(".{ext}")) {
             return Err(tool_err(format!("output_path must end with .{ext} for format \"{format}\"")));
         }
-        if let Some(dir) = std::path::Path::new(&p.output_path).parent() {
-            if !dir.is_dir() {
-                return Err(tool_err(format!("output directory does not exist: {}", dir.display())));
-            }
-        }
+        check_output_path(&p.output_path)?;
         // Available formats depend on the FFmpeg build — fail early with the list.
         if format != "png" && format != "jpeg" {
             let available = crate::image::available_formats();
@@ -938,11 +952,7 @@ impl TrailerMcp {
         if !p.output_path.ends_with(".mp4") {
             return Err(tool_err("output_path must end with .mp4".into()));
         }
-        if let Some(dir) = std::path::Path::new(&p.output_path).parent() {
-            if !dir.is_dir() {
-                return Err(tool_err(format!("output directory does not exist: {}", dir.display())));
-            }
-        }
+        check_output_path(&p.output_path)?;
         self.forward("export_trailer", p, EXPORT_TIMEOUT).await
     }
 }
@@ -981,6 +991,39 @@ impl ServerHandler for TrailerMcp {
 // HTTP serving
 // ---------------------------------------------------------------------------
 
+/// Bearer check in constant time, so response timing leaks nothing about how
+/// much of the token a caller got right.
+fn authorized(headers: &axum::http::HeaderMap, expected: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .map(|v| v.as_bytes().ct_eq(expected.as_bytes()).into())
+        .unwrap_or(false)
+}
+
+/// Reject browser-originated requests from anywhere but this machine. MCP
+/// clients send no `Origin`; a web page does, and a DNS-rebinding page would
+/// carry its attacker's origin here even though the socket is loopback.
+fn origin_is_local(headers: &axum::http::HeaderMap) -> bool {
+    match headers.get(axum::http::header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        None => true,
+        Some(origin) => {
+            let host = origin
+                .strip_prefix("http://")
+                .or_else(|| origin.strip_prefix("https://"))
+                .unwrap_or(origin);
+            let host = host.split('/').next().unwrap_or(host);
+            // Strip a port — but not the colons inside a bracketed IPv6 literal.
+            let host = if host.starts_with('[') {
+                host.split_inclusive(']').next().unwrap_or(host)
+            } else {
+                host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host)
+            };
+            matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+        }
+    }
+}
+
 /// Bind the first free port in PORT_RANGE and serve MCP on /mcp until the
 /// shutdown sender is dropped (toggle off) or the app exits.
 async fn serve(
@@ -1016,22 +1059,18 @@ async fn serve(
         StreamableHttpServerConfig::default().with_cancellation_token(cancel.child_token()),
     );
 
-    let expected = format!("Bearer {token}");
+    let expected = Arc::new(format!("Bearer {token}"));
     let router = axum::Router::new().nest_service("/mcp", service).layer(
         axum::middleware::from_fn(move |req: axum::extract::Request, next: axum::middleware::Next| {
             let expected = expected.clone();
             async move {
-                let ok = req
-                    .headers()
-                    .get(axum::http::header::AUTHORIZATION)
-                    .and_then(|v| v.to_str().ok())
-                    .map(|v| v == expected)
-                    .unwrap_or(false);
-                if ok {
-                    next.run(req).await
-                } else {
-                    axum::http::StatusCode::UNAUTHORIZED.into_response()
+                if !authorized(req.headers(), &expected) {
+                    return axum::http::StatusCode::UNAUTHORIZED.into_response();
                 }
+                if !origin_is_local(req.headers()) {
+                    return axum::http::StatusCode::FORBIDDEN.into_response();
+                }
+                next.run(req).await
             }
         }),
     );
@@ -1052,4 +1091,40 @@ async fn serve(
     }
     port_out.store(0, Ordering::Relaxed);
     reset_clients(&app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue, header};
+
+    fn headers(pairs: &[(header::HeaderName, &str)]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(k.clone(), HeaderValue::from_str(v).unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn bearer_must_match_exactly() {
+        let ok = headers(&[(header::AUTHORIZATION, "Bearer abc")]);
+        assert!(authorized(&ok, "Bearer abc"));
+        assert!(!authorized(&ok, "Bearer abd"));
+        assert!(!authorized(&ok, "Bearer ab"));
+        assert!(!authorized(&HeaderMap::new(), "Bearer abc"));
+    }
+
+    /// Native MCP clients send no Origin; only browser pages do, and only a
+    /// same-machine page may pass — anything else is a rebinding attempt.
+    #[test]
+    fn origin_gate_admits_none_or_loopback_only() {
+        assert!(origin_is_local(&HeaderMap::new()));
+        for good in ["http://localhost:4823", "http://127.0.0.1", "http://[::1]", "http://[::1]:1234"] {
+            assert!(origin_is_local(&headers(&[(header::ORIGIN, good)])), "{good}");
+        }
+        for bad in ["https://evil.example", "http://localhost.evil.example:4823", "null"] {
+            assert!(!origin_is_local(&headers(&[(header::ORIGIN, bad)])), "{bad}");
+        }
+    }
 }

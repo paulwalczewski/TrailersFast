@@ -4,6 +4,8 @@ import { useTrailerStore } from "@trailerfast/state";
 import { useState } from "react";
 import { engine, isTauri } from "../engine";
 import { performExport } from "../exportTrailer";
+import { ChoiceButton } from "../ui/ChoiceButton";
+import { ModalHeader } from "../ui/ModalHeader";
 import { ModalShell } from "../ui/ModalShell";
 
 type Phase = "idle" | "exporting" | "done" | "error";
@@ -58,98 +60,79 @@ export function ExportDialog({ onClose }: { onClose: () => void }) {
       onClose={busy ? () => {} : onClose}
       className="w-[460px] max-w-full rounded-2xl bg-surface p-5 shadow-xl"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Export trailer</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          aria-label="Close"
-          className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground disabled:opacity-40"
-        >
-          ✕
-        </button>
-      </div>
+      <ModalHeader title="Export trailer" onClose={onClose} disabled={busy} className="mb-0" />
       <p className="mb-4 text-xs text-muted">
         Choose a quality preset and codec — sizes are for the {aspectRatio} canvas.
       </p>
 
+      <div className="mb-4 flex flex-col gap-2">
+        {presets.map((p) => (
+          <ChoiceButton
+            key={p.id}
+            selected={preset === p.id}
+            onSelect={() => setPreset(p.id)}
+            disabled={busy}
+            className="flex items-center justify-between text-left"
+          >
+            <span className="font-medium">{p.label}</span>
+            <span className="text-xs text-muted">{p.hint}</span>
+          </ChoiceButton>
+        ))}
+      </div>
+
+      <div className="mb-4 flex gap-2">
+        {CODECS.map((c) => (
+          <ChoiceButton
+            key={c.id}
+            selected={codec === c.id}
+            onSelect={() => setCodec(c.id)}
+            disabled={busy}
+            className="flex-1"
+          >
+            <span className="font-medium">{c.label}</span>
+            <span className="ml-1 text-xs text-muted">{c.hint}</span>
+          </ChoiceButton>
+        ))}
+      </div>
+
+      {phase === "exporting" ? (
+        <div className="mb-4">
+          <div className="mb-1 flex justify-between text-xs text-muted">
+            <span>Encoding…</span>
+            <span>{Math.round(frac * 100)}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-surface-tertiary">
+            <div className="h-full bg-accent transition-all" style={{ width: `${frac * 100}%` }} />
+          </div>
+        </div>
+      ) : null}
+
+      {phase === "done" ? (
         <div className="mb-4 flex flex-col gap-2">
-          {presets.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              disabled={busy}
-              onClick={() => setPreset(p.id)}
-              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                preset === p.id
-                  ? "border-accent bg-accent/10"
-                  : "border-border bg-surface-secondary hover:bg-surface-tertiary"
-              }`}
-            >
-              <span className="font-medium">{p.label}</span>
-              <span className="text-xs text-muted">{p.hint}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-4 flex gap-2">
-          {CODECS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              disabled={busy}
-              onClick={() => setCodec(c.id)}
-              className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                codec === c.id
-                  ? "border-accent bg-accent/10"
-                  : "border-border bg-surface-secondary hover:bg-surface-tertiary"
-              }`}
-            >
-              <span className="font-medium">{c.label}</span>
-              <span className="ml-1 text-xs text-muted">{c.hint}</span>
-            </button>
-          ))}
-        </div>
-
-        {phase === "exporting" ? (
-          <div className="mb-4">
-            <div className="mb-1 flex justify-between text-xs text-muted">
-              <span>Encoding…</span>
-              <span>{Math.round(frac * 100)}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-tertiary">
-              <div className="h-full bg-accent transition-all" style={{ width: `${frac * 100}%` }} />
-            </div>
-          </div>
-        ) : null}
-
-        {phase === "done" ? (
-          <div className="mb-4 flex flex-col gap-2">
-            <p className="break-all rounded-lg bg-success/10 px-3 py-2 text-xs text-success-foreground">
-              ✅ Saved to {savedPath}
-            </p>
-            {warning ? (
-              <p className="rounded-lg bg-warning/15 px-3 py-2 text-xs text-warning-foreground">
-                ⚠️ {warning}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {phase === "error" ? (
-          <p className="mb-4 break-all rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
-            {error}
+          <p className="break-all rounded-lg bg-success/10 px-3 py-2 text-xs text-success-foreground">
+            ✅ Saved to {savedPath}
           </p>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <Button variant="tertiary" onPress={onClose} isDisabled={busy}>
-            {phase === "done" ? "Close" : "Cancel"}
-          </Button>
-          <Button onPress={onExport} isDisabled={busy}>
-            {busy ? "Exporting…" : phase === "done" ? "Export again" : "Export"}
-          </Button>
+          {warning ? (
+            <p className="rounded-lg bg-warning/15 px-3 py-2 text-xs text-warning-foreground">
+              ⚠️ {warning}
+            </p>
+          ) : null}
         </div>
+      ) : null}
+      {phase === "error" ? (
+        <p className="mb-4 break-all rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="flex justify-end gap-2">
+        <Button variant="tertiary" onPress={onClose} isDisabled={busy}>
+          {phase === "done" ? "Close" : "Cancel"}
+        </Button>
+        <Button onPress={onExport} isDisabled={busy}>
+          {busy ? "Exporting…" : phase === "done" ? "Export again" : "Export"}
+        </Button>
+      </div>
     </ModalShell>
   );
 }

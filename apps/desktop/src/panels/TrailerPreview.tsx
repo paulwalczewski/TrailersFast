@@ -1,11 +1,11 @@
 import { Player, type PlayerRef } from "@remotion/player";
 import {
-  type IntroConfig,
-  PROXY_SIDE,
   buildTrailerClips,
   byId,
   canvasFor,
+  type IntroConfig,
   introActive,
+  PROXY_SIDE,
   proxyKey,
   totalFrames,
   watermarkActive,
@@ -13,7 +13,11 @@ import {
 import { useTrailerStore } from "@trailerfast/state";
 import { type RefObject, useMemo } from "react";
 import type { IntroProps } from "../composition/IntroTitle";
-import { PREVIEW_FPS, TrailerComposition, type PreviewClip } from "../composition/TrailerComposition";
+import {
+  PREVIEW_FPS,
+  type PreviewClip,
+  TrailerComposition,
+} from "../composition/TrailerComposition";
 import type { WatermarkProps } from "../composition/WatermarkOverlay";
 import { engine } from "../engine";
 
@@ -85,15 +89,25 @@ export function TrailerPreview({
         // Proxy plays linearly from 0 (smooth); source+trim is the fallback until ready.
         return proxy
           ? { ...common, src: engine.toPlayableUrl(proxy), trimBeforeInFrames: 0 }
-          : { ...common, src: engine.toPlayableUrl(c.assetPath), trimBeforeInFrames: c.trimBeforeInFrames };
+          : {
+              ...common,
+              src: engine.toPlayableUrl(c.assetPath),
+              trimBeforeInFrames: c.trimBeforeInFrames,
+            };
       }),
     [markers, assetsById, proxies, proxyShortSide],
   );
 
   const durationInFrames = Math.max(1, totalFrames(clips));
 
-  const introProps = useMemo(() => titleCardProps(intro, durationInFrames), [intro, durationInFrames]);
-  const outroProps = useMemo(() => titleCardProps(outro, durationInFrames), [outro, durationInFrames]);
+  const introProps = useMemo(
+    () => titleCardProps(intro, durationInFrames),
+    [intro, durationInFrames],
+  );
+  const outroProps = useMemo(
+    () => titleCardProps(outro, durationInFrames),
+    [outro, durationInFrames],
+  );
 
   const watermarkProps = useMemo<WatermarkProps | null>(() => {
     if (!watermarkActive(watermark)) return null;
@@ -156,18 +170,18 @@ export function TrailerPreview({
           Absolute positioning resolves against the real laid-out box. */}
       <div className="absolute inset-0">
         <Player
-        ref={playerRef}
-        component={TrailerComposition}
-        inputProps={inputProps}
-        durationInFrames={durationInFrames}
-        compositionWidth={width}
-        compositionHeight={height}
-        fps={PREVIEW_FPS}
-        style={{ width: "100%", height: "100%" }}
-        controls
-        clickToPlay
-        spaceKeyToPlayOrPause={false}
-        loop
+          ref={playerRef}
+          component={TrailerComposition}
+          inputProps={inputProps}
+          durationInFrames={durationInFrames}
+          compositionWidth={width}
+          compositionHeight={height}
+          fps={PREVIEW_FPS}
+          style={{ width: "100%", height: "100%" }}
+          controls
+          clickToPlay
+          spaceKeyToPlayOrPause={false}
+          loop
         />
       </div>
     </div>

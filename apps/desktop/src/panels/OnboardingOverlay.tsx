@@ -13,9 +13,8 @@ export function OnboardingOverlay() {
 
   return (
     <GuideOverlay arrow="left" title="Add your first video">
-      Drag &amp; drop a video onto the{" "}
-      <span className="font-medium text-foreground">Assets</span> panel on the left to start marking
-      clips —{" "}
+      Drag &amp; drop a video onto the <span className="font-medium text-foreground">Assets</span>{" "}
+      panel on the left to start marking clips —{" "}
       <button
         type="button"
         onClick={browse}

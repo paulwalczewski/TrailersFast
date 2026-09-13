@@ -9,6 +9,12 @@
     "dev:web": "pnpm --filter @trailerfast/desktop dev:web",
     "build": "pnpm --filter @trailerfast/desktop build",
     "tauri": "pnpm --filter @trailerfast/desktop tauri",
-    "typecheck": "pnpm --filter @trailerfast/desktop typecheck"
-  }
+    "typecheck": "pnpm --filter @trailerfast/desktop typecheck",
+    "lint": "biome check",
+    "format": "biome check --write"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13"
+  },
+  "license": "MIT"
 }

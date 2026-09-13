@@ -1,9 +1,5 @@
 import { Label, ListBox, Select, Slider, Switch } from "@heroui/react";
-import {
-  SHADOW_INTENSITY_RANGE,
-  SHADOW_OFFSET_RANGE,
-  type ShadowConfig,
-} from "@trailerfast/core";
+import { SHADOW_INTENSITY_RANGE, SHADOW_OFFSET_RANGE, type ShadowConfig } from "@trailerfast/core";
 import type { ReactNode } from "react";
 
 type Option = { id: string; label: string };

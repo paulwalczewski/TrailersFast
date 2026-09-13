@@ -14,6 +14,7 @@ import {
   LabeledSwitch,
   ShadowFields,
 } from "../ui/Fields";
+import { DisabledGroup } from "../ui/OverlayTextForm";
 import { Section } from "../ui/Section";
 import { TitleCardForm } from "./TitleCardForm";
 
@@ -31,12 +32,7 @@ function WatermarkForm() {
         onChange={(v) => update({ enabled: v })}
       />
 
-      <div
-        className={
-          wm.enabled ? "flex flex-col gap-4" : "pointer-events-none flex flex-col gap-4 opacity-50"
-        }
-        aria-disabled={!wm.enabled}
-      >
+      <DisabledGroup enabled={wm.enabled}>
         <TextField value={wm.text} onChange={(v) => update({ text: v })}>
           <Label>Text</Label>
           <Input placeholder="© Your Brand" />
@@ -80,7 +76,7 @@ function WatermarkForm() {
         <LabeledColor label="Color" value={wm.color} onChange={(v) => update({ color: v })} />
 
         <ShadowFields config={wm} onChange={update} />
-      </div>
+      </DisabledGroup>
     </div>
   );
 }

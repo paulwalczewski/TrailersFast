@@ -42,7 +42,11 @@ export function renderIntroImage(intro: IntroConfig, width: number, height: numb
   // Vertical: stack heading + description, place the block per vAlign.
   const blockH = headSize + (description ? gap + descSize : 0);
   const topY =
-    intro.vAlign === "top" ? pad : intro.vAlign === "bottom" ? height - pad - blockH : (height - blockH) / 2;
+    intro.vAlign === "top"
+      ? pad
+      : intro.vAlign === "bottom"
+        ? height - pad - blockH
+        : (height - blockH) / 2;
 
   if (heading) {
     ctx.font = `${intro.headingWeight} ${headSize}px ${quoteFamily(intro.fontFamily)}`;

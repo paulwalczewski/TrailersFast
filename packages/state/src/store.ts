@@ -1,24 +1,24 @@
-import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import {
   type Asset,
   type ClipMarker,
   type ClipTransform,
+  centeredClip,
+  clampClipResize,
+  defaultTransform,
+  emptyProject,
   FIT_MODES,
   type IntroConfig,
+  nextOrder,
+  orderedMarkers,
   type Project,
   type Settings,
   type ThumbnailConfig,
   type ThumbnailFrame,
   type ThumbnailTextConfig,
   type WatermarkConfig,
-  centeredClip,
-  clampClipResize,
-  defaultTransform,
-  emptyProject,
-  nextOrder,
-  orderedMarkers,
 } from "@trailerfast/core";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 let idSeq = 0;
 const uid = (prefix: string) => `${prefix}_${Date.now().toString(36)}_${idSeq++}`;
@@ -153,238 +153,238 @@ const pushPast = (s: { past: HistoryDoc[] }, snapshot: HistoryDoc) => ({
 export const useTrailerStore = create<TrailerStore>()(
   persist(
     (set) => ({
-  ...emptyProject(),
-  proxies: {},
-  lastExportPath: "",
+      ...emptyProject(),
+      proxies: {},
+      lastExportPath: "",
 
-  mode: "trailer",
-  setMode: (mode) => set({ mode }),
+      mode: "trailer",
+      setMode: (mode) => set({ mode }),
 
-  clearProject: () =>
-    set((s) => ({
-      assets: [],
-      markers: [],
-      thumbnail: { ...s.thumbnail, frames: [] },
-    })),
-
-  setProxy: (key, path) => set((s) => ({ proxies: { ...s.proxies, [key]: path } })),
-  setLastExportPath: (path) => set({ lastExportPath: path }),
-
-  past: [],
-  future: [],
-  undo: () => {
-    timeTraveling = true;
-    set((s) => {
-      if (!s.past.length) return {};
-      const prev = s.past[s.past.length - 1]!;
-      return { ...prev, past: s.past.slice(0, -1), future: [...s.future, docOf(s)] };
-    });
-    timeTraveling = false;
-  },
-  redo: () => {
-    timeTraveling = true;
-    set((s) => {
-      if (!s.future.length) return {};
-      const next = s.future[s.future.length - 1]!;
-      return { ...next, past: [...s.past, docOf(s)], future: s.future.slice(0, -1) };
-    });
-    timeTraveling = false;
-  },
-  beginHistoryBatch: () => {
-    if (suppressHistory) return;
-    // Snapshot the pre-gesture doc once; edits during the batch aren't recorded.
-    set((s) => pushPast(s, docOf(s)));
-    suppressHistory = true;
-  },
-  endHistoryBatch: () => {
-    suppressHistory = false;
-  },
-
-  addAssets: (assets) =>
-    set((s) => ({
-      assets: [
-        ...s.assets,
-        ...assets.map((a) => ({
-          ...a,
-          id: uid("asset"),
-          selected: true,
-          filmstripUrls: [],
-          loading: false,
-          mediaLoading: false,
+      clearProject: () =>
+        set((s) => ({
+          assets: [],
+          markers: [],
+          thumbnail: { ...s.thumbnail, frames: [] },
         })),
-      ],
-    })),
 
-  addPlaceholder: (path, fileName) => {
-    const id = uid("asset");
-    set((s) => ({
-      assets: [
-        ...s.assets,
-        {
-          id,
-          path,
-          fileName,
-          durationSec: 0,
-          width: 0,
-          height: 0,
-          fps: 0,
-          hasAudio: false,
-          filmstripUrls: [],
-          selected: true,
-          loading: true,
-          mediaLoading: true,
-        },
-      ],
-    }));
-    return id;
-  },
+      setProxy: (key, path) => set((s) => ({ proxies: { ...s.proxies, [key]: path } })),
+      setLastExportPath: (path) => set({ lastExportPath: path }),
 
-  setAssetProbed: (assetId, probe) =>
-    set((s) => ({
-      assets: s.assets.map((a) => (a.id === assetId ? { ...a, ...probe, loading: false } : a)),
-    })),
-
-  setAssetMedia: (assetId, media) =>
-    set((s) => ({
-      assets: s.assets.map((a) => (a.id === assetId ? { ...a, ...media } : a)),
-    })),
-
-  toggleAssetSelected: (assetId) =>
-    set((s) => {
-      const deselecting = s.assets.find((a) => a.id === assetId)?.selected === true;
-      return {
-        assets: s.assets.map((a) => (a.id === assetId ? { ...a, selected: !a.selected } : a)),
-        // Dropping an asset from the selection also drops its markers and the
-        // thumbnail frames picked from it — both live on the source timeline.
-        markers: deselecting ? s.markers.filter((m) => m.assetId !== assetId) : s.markers,
-        thumbnail: deselecting ? withoutAssetFrames(s.thumbnail, assetId) : s.thumbnail,
-      };
-    }),
-
-  removeAsset: (assetId) =>
-    set((s) => ({
-      assets: s.assets.filter((a) => a.id !== assetId),
-      markers: s.markers.filter((m) => m.assetId !== assetId),
-      thumbnail: withoutAssetFrames(s.thumbnail, assetId),
-    })),
-
-  setDefaultClipLength: (sec) =>
-    set((s) => ({ settings: { ...s.settings, defaultClipLengthSec: sec } })),
-
-  updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
-
-  addClip: (assetId, startSec, lengthSec) => {
-    const id = uid("clip");
-    set((s) => {
-      const dur = s.assets.find((a) => a.id === assetId)?.durationSec ?? 0;
-      const marker: ClipMarker = {
-        id,
-        assetId,
-        ...clampClipResize(startSec, lengthSec, dur),
-        order: nextOrder(s.markers),
-        transform: defaultTransform(),
-      };
-      return { markers: [...s.markers, marker] };
-    });
-    return id;
-  },
-
-  markClip: (assetId, localSec, assetDurationSec) =>
-    set((s) => {
-      const { startSec, lengthSec } = centeredClip(
-        localSec,
-        assetDurationSec,
-        s.settings.defaultClipLengthSec,
-      );
-      const marker: ClipMarker = {
-        id: uid("clip"),
-        assetId,
-        startSec,
-        lengthSec,
-        order: nextOrder(s.markers),
-        transform: defaultTransform(),
-      };
-      return { markers: [...s.markers, marker] };
-    }),
-
-  removeMarker: (markerId) =>
-    set((s) => {
-      const remaining = orderedMarkers(s.markers.filter((m) => m.id !== markerId));
-      return { markers: remaining.map((m, i) => ({ ...m, order: i })) };
-    }),
-
-  reorderMarker: (markerId, toIndex) =>
-    set((s) => {
-      const ordered = orderedMarkers(s.markers);
-      const from = ordered.findIndex((m) => m.id === markerId);
-      if (from === -1) return {};
-      const [moved] = ordered.splice(from, 1);
-      ordered.splice(Math.max(0, Math.min(toIndex, ordered.length)), 0, moved!);
-      return { markers: ordered.map((m, i) => ({ ...m, order: i })) };
-    }),
-
-  resizeMarker: (markerId, startSec, lengthSec) =>
-    set((s) => ({
-      markers: s.markers.map((m) => {
-        if (m.id !== markerId) return m;
-        // Enforce the bounds here so every caller (drag, undo, future
-        // programmatic trims) gets a valid clip, not just the drag handler.
-        const dur = s.assets.find((a) => a.id === m.assetId)?.durationSec ?? 0;
-        return { ...m, ...clampClipResize(startSec, lengthSec, dur) };
-      }),
-    })),
-
-  setMarkerTransform: (markerId, patch) =>
-    set((s) => ({
-      markers: s.markers.map((m) =>
-        m.id === markerId ? { ...m, transform: { ...m.transform, ...patch } } : m,
-      ),
-    })),
-
-  updateIntro: (patch) => set((s) => ({ intro: { ...s.intro, ...patch } })),
-
-  updateOutro: (patch) => set((s) => ({ outro: { ...s.outro, ...patch } })),
-
-  updateWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
-
-  updateThumbnail: (patch) => set((s) => ({ thumbnail: { ...s.thumbnail, ...patch } })),
-
-  updateThumbnailTitle: (patch) =>
-    set((s) => ({ thumbnail: { ...s.thumbnail, title: { ...s.thumbnail.title, ...patch } } })),
-
-  addThumbnailFrame: (assetId, atSec) => {
-    const id = uid("frame");
-    set((s) => ({
-      thumbnail: {
-        ...s.thumbnail,
-        frames: [...s.thumbnail.frames, { id, assetId, atSec, transform: defaultTransform() }],
+      past: [],
+      future: [],
+      undo: () => {
+        timeTraveling = true;
+        set((s) => {
+          if (!s.past.length) return {};
+          const prev = s.past[s.past.length - 1]!;
+          return { ...prev, past: s.past.slice(0, -1), future: [...s.future, docOf(s)] };
+        });
+        timeTraveling = false;
       },
-    }));
-    return id;
-  },
-
-  removeThumbnailFrame: (frameId) =>
-    set((s) => ({
-      thumbnail: { ...s.thumbnail, frames: s.thumbnail.frames.filter((f) => f.id !== frameId) },
-    })),
-
-  setThumbnailFrames: (frames) =>
-    set((s) => ({
-      thumbnail: {
-        ...s.thumbnail,
-        frames: frames.map((f) => ({ ...f, id: uid("frame"), transform: defaultTransform() })),
+      redo: () => {
+        timeTraveling = true;
+        set((s) => {
+          if (!s.future.length) return {};
+          const next = s.future[s.future.length - 1]!;
+          return { ...next, past: [...s.past, docOf(s)], future: s.future.slice(0, -1) };
+        });
+        timeTraveling = false;
       },
-    })),
-
-  setThumbnailFrameTransform: (frameId, patch) =>
-    set((s) => ({
-      thumbnail: {
-        ...s.thumbnail,
-        frames: s.thumbnail.frames.map((f) =>
-          f.id === frameId ? { ...f, transform: { ...f.transform, ...patch } } : f,
-        ),
+      beginHistoryBatch: () => {
+        if (suppressHistory) return;
+        // Snapshot the pre-gesture doc once; edits during the batch aren't recorded.
+        set((s) => pushPast(s, docOf(s)));
+        suppressHistory = true;
       },
-    })),
+      endHistoryBatch: () => {
+        suppressHistory = false;
+      },
+
+      addAssets: (assets) =>
+        set((s) => ({
+          assets: [
+            ...s.assets,
+            ...assets.map((a) => ({
+              ...a,
+              id: uid("asset"),
+              selected: true,
+              filmstripUrls: [],
+              loading: false,
+              mediaLoading: false,
+            })),
+          ],
+        })),
+
+      addPlaceholder: (path, fileName) => {
+        const id = uid("asset");
+        set((s) => ({
+          assets: [
+            ...s.assets,
+            {
+              id,
+              path,
+              fileName,
+              durationSec: 0,
+              width: 0,
+              height: 0,
+              fps: 0,
+              hasAudio: false,
+              filmstripUrls: [],
+              selected: true,
+              loading: true,
+              mediaLoading: true,
+            },
+          ],
+        }));
+        return id;
+      },
+
+      setAssetProbed: (assetId, probe) =>
+        set((s) => ({
+          assets: s.assets.map((a) => (a.id === assetId ? { ...a, ...probe, loading: false } : a)),
+        })),
+
+      setAssetMedia: (assetId, media) =>
+        set((s) => ({
+          assets: s.assets.map((a) => (a.id === assetId ? { ...a, ...media } : a)),
+        })),
+
+      toggleAssetSelected: (assetId) =>
+        set((s) => {
+          const deselecting = s.assets.find((a) => a.id === assetId)?.selected === true;
+          return {
+            assets: s.assets.map((a) => (a.id === assetId ? { ...a, selected: !a.selected } : a)),
+            // Dropping an asset from the selection also drops its markers and the
+            // thumbnail frames picked from it — both live on the source timeline.
+            markers: deselecting ? s.markers.filter((m) => m.assetId !== assetId) : s.markers,
+            thumbnail: deselecting ? withoutAssetFrames(s.thumbnail, assetId) : s.thumbnail,
+          };
+        }),
+
+      removeAsset: (assetId) =>
+        set((s) => ({
+          assets: s.assets.filter((a) => a.id !== assetId),
+          markers: s.markers.filter((m) => m.assetId !== assetId),
+          thumbnail: withoutAssetFrames(s.thumbnail, assetId),
+        })),
+
+      setDefaultClipLength: (sec) =>
+        set((s) => ({ settings: { ...s.settings, defaultClipLengthSec: sec } })),
+
+      updateSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+
+      addClip: (assetId, startSec, lengthSec) => {
+        const id = uid("clip");
+        set((s) => {
+          const dur = s.assets.find((a) => a.id === assetId)?.durationSec ?? 0;
+          const marker: ClipMarker = {
+            id,
+            assetId,
+            ...clampClipResize(startSec, lengthSec, dur),
+            order: nextOrder(s.markers),
+            transform: defaultTransform(),
+          };
+          return { markers: [...s.markers, marker] };
+        });
+        return id;
+      },
+
+      markClip: (assetId, localSec, assetDurationSec) =>
+        set((s) => {
+          const { startSec, lengthSec } = centeredClip(
+            localSec,
+            assetDurationSec,
+            s.settings.defaultClipLengthSec,
+          );
+          const marker: ClipMarker = {
+            id: uid("clip"),
+            assetId,
+            startSec,
+            lengthSec,
+            order: nextOrder(s.markers),
+            transform: defaultTransform(),
+          };
+          return { markers: [...s.markers, marker] };
+        }),
+
+      removeMarker: (markerId) =>
+        set((s) => {
+          const remaining = orderedMarkers(s.markers.filter((m) => m.id !== markerId));
+          return { markers: remaining.map((m, i) => ({ ...m, order: i })) };
+        }),
+
+      reorderMarker: (markerId, toIndex) =>
+        set((s) => {
+          const ordered = orderedMarkers(s.markers);
+          const from = ordered.findIndex((m) => m.id === markerId);
+          if (from === -1) return {};
+          const [moved] = ordered.splice(from, 1);
+          ordered.splice(Math.max(0, Math.min(toIndex, ordered.length)), 0, moved!);
+          return { markers: ordered.map((m, i) => ({ ...m, order: i })) };
+        }),
+
+      resizeMarker: (markerId, startSec, lengthSec) =>
+        set((s) => ({
+          markers: s.markers.map((m) => {
+            if (m.id !== markerId) return m;
+            // Enforce the bounds here so every caller (drag, undo, future
+            // programmatic trims) gets a valid clip, not just the drag handler.
+            const dur = s.assets.find((a) => a.id === m.assetId)?.durationSec ?? 0;
+            return { ...m, ...clampClipResize(startSec, lengthSec, dur) };
+          }),
+        })),
+
+      setMarkerTransform: (markerId, patch) =>
+        set((s) => ({
+          markers: s.markers.map((m) =>
+            m.id === markerId ? { ...m, transform: { ...m.transform, ...patch } } : m,
+          ),
+        })),
+
+      updateIntro: (patch) => set((s) => ({ intro: { ...s.intro, ...patch } })),
+
+      updateOutro: (patch) => set((s) => ({ outro: { ...s.outro, ...patch } })),
+
+      updateWatermark: (patch) => set((s) => ({ watermark: { ...s.watermark, ...patch } })),
+
+      updateThumbnail: (patch) => set((s) => ({ thumbnail: { ...s.thumbnail, ...patch } })),
+
+      updateThumbnailTitle: (patch) =>
+        set((s) => ({ thumbnail: { ...s.thumbnail, title: { ...s.thumbnail.title, ...patch } } })),
+
+      addThumbnailFrame: (assetId, atSec) => {
+        const id = uid("frame");
+        set((s) => ({
+          thumbnail: {
+            ...s.thumbnail,
+            frames: [...s.thumbnail.frames, { id, assetId, atSec, transform: defaultTransform() }],
+          },
+        }));
+        return id;
+      },
+
+      removeThumbnailFrame: (frameId) =>
+        set((s) => ({
+          thumbnail: { ...s.thumbnail, frames: s.thumbnail.frames.filter((f) => f.id !== frameId) },
+        })),
+
+      setThumbnailFrames: (frames) =>
+        set((s) => ({
+          thumbnail: {
+            ...s.thumbnail,
+            frames: frames.map((f) => ({ ...f, id: uid("frame"), transform: defaultTransform() })),
+          },
+        })),
+
+      setThumbnailFrameTransform: (frameId, patch) =>
+        set((s) => ({
+          thumbnail: {
+            ...s.thumbnail,
+            frames: s.thumbnail.frames.map((f) =>
+              f.id === frameId ? { ...f, transform: { ...f.transform, ...patch } } : f,
+            ),
+          },
+        })),
     }),
     {
       name: "trailerfast",
@@ -465,7 +465,8 @@ useTrailerStore.subscribe((state, prev) => {
     kind === "thumbnail" ||
     kind === "thumbnailFrameTransform" ||
     kind === "markerTransform";
-  const coalesce = coalescible && kind === lastKind && now - lastRecordAt < 700 && state.future.length === 0;
+  const coalesce =
+    coalescible && kind === lastKind && now - lastRecordAt < 700 && state.future.length === 0;
   lastRecordAt = now;
   lastKind = kind;
   if (coalesce) return;

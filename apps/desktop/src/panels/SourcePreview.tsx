@@ -31,7 +31,7 @@ export function SourcePreview({ playheadSec, videoRef, onScrub }: Props) {
         /* not seekable yet */
       }
     }
-  }, [localTime, src, videoRef]);
+  }, [localTime, videoRef]);
 
   if (!current) {
     return (

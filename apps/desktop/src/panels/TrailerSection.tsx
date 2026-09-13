@@ -1,5 +1,6 @@
 import type { PlayerRef } from "@remotion/player";
 import type { RefObject } from "react";
+import { Icon } from "../ui/Icon";
 import { MarkFirstClipOverlay } from "./OnboardingOverlay";
 import { TrailerPreview } from "./TrailerPreview";
 import { TrailerTimeline } from "./TrailerTimeline";
@@ -17,9 +18,9 @@ export function TrailerSection({ playerRef, onExpand }: Props) {
           aria-label="Enlarge trailer"
           className="grid size-6 place-items-center rounded-md text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <Icon>
             <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-          </svg>
+          </Icon>
         </button>
       </div>
 

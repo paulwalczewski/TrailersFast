@@ -32,8 +32,9 @@ const ALIGN_ITEMS = {
 
 /**
  * Full-screen title that animates IN over the first ~0.4s and OUT over the last
- * ~0.4s of its duration. The four animation styles must be reproducible in
- * FFmpeg `drawtext` for export parity (kept intentionally simple).
+ * ~0.4s of its duration. The export renders the same card as a PNG overlay and
+ * reproduces these four motions with FFmpeg `overlay` expressions
+ * (`push_title_card` in export.rs) — keep them simple and change both together.
  */
 export function IntroTitle({
   text,
@@ -101,7 +102,9 @@ export function IntroTitle({
           maxWidth: "84%",
         }}
       >
-        <div style={{ fontSize: fontSizePx, fontWeight: headingWeight, lineHeight: 1.1 }}>{text}</div>
+        <div style={{ fontSize: fontSizePx, fontWeight: headingWeight, lineHeight: 1.1 }}>
+          {text}
+        </div>
         {description ? (
           <div
             style={{

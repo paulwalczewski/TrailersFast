@@ -4,17 +4,17 @@
  */
 import {
   type AspectRatio,
+  byId,
+  canvasFor,
   type ExportOpts,
   type ExportPreset,
   type FitMode,
   type IntroAnimation,
+  introActive,
   type Project,
   type Settings,
   type ShadowConfig,
   type WatermarkPosition,
-  byId,
-  canvasFor,
-  introActive,
   watermarkActive,
 } from "./model";
 import { orderedMarkers } from "./timeline";

@@ -1,8 +1,8 @@
 import { canvasFor, templateCells } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useState } from "react";
-import { ThumbnailCanvas } from "../thumbnail/ThumbnailCanvas";
 import { useFrameImages } from "../thumbnail/frameImages";
+import { ThumbnailCanvas } from "../thumbnail/ThumbnailCanvas";
 import { Icon } from "../ui/Icon";
 import { ThumbnailFrameModal } from "./ThumbnailFrameModal";
 

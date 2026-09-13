@@ -4,7 +4,7 @@
  * Everything is cached by (path, time, width) — the preview re-renders on every
  * keystroke and must never re-shell FFmpeg for a frame it already has.
  */
-import { type Asset, type ThumbnailFrame, byId, filmstripFrameAt } from "@trailerfast/core";
+import { type Asset, byId, filmstripFrameAt, type ThumbnailFrame } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { engine } from "../engine";

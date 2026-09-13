@@ -1,8 +1,9 @@
 import type { PlayerRef } from "@remotion/player";
 import { PROXY_SIDE } from "@trailerfast/core";
 import type { RefObject } from "react";
-import { useProxies } from "../useProxies";
+import { ModalHeader } from "../ui/ModalHeader";
 import { ModalShell } from "../ui/ModalShell";
+import { useProxies } from "../useProxies";
 import { TrailerPreview } from "./TrailerPreview";
 import { TrailerTimeline } from "./TrailerTimeline";
 
@@ -24,23 +25,9 @@ export function TrailerModal({
       onClose={onClose}
       className="flex max-h-[94vh] w-[92vw] max-w-6xl flex-col gap-3 rounded-2xl bg-surface p-4 shadow-xl"
     >
-      <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Trailer</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground"
-          >
-            ✕
-          </button>
-        </div>
+      <ModalHeader title="Trailer" onClose={onClose} className="mb-0" />
       <TrailerTimeline playerRef={playerRef} />
-      <TrailerPreview
-        playerRef={playerRef}
-        maxHeight="66vh"
-        proxyShortSide={PROXY_SIDE.enlarged}
-      />
+      <TrailerPreview playerRef={playerRef} maxHeight="66vh" proxyShortSide={PROXY_SIDE.enlarged} />
     </ModalShell>
   );
 }

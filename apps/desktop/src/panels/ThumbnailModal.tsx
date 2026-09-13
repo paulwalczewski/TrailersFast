@@ -1,3 +1,4 @@
+import { ModalHeader } from "../ui/ModalHeader";
 import { ModalShell } from "../ui/ModalShell";
 import { ThumbnailPreview } from "./ThumbnailPreview";
 
@@ -9,17 +10,7 @@ export function ThumbnailModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       className="flex max-h-[94vh] w-[92vw] max-w-6xl flex-col gap-3 rounded-2xl bg-surface p-4 shadow-xl"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Thumbnail</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground"
-        >
-          ✕
-        </button>
-      </div>
+      <ModalHeader title="Thumbnail" onClose={onClose} className="mb-0" />
       <ThumbnailPreview maxHeight="66vh" />
     </ModalShell>
   );

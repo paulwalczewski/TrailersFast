@@ -1,9 +1,9 @@
 import {
+  buildExportPlan,
   type ExportCodec,
   type ExportOpts,
   type ExportPreset,
   type Project,
-  buildExportPlan,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import type { Progress } from "@trailerfast/video-engine";

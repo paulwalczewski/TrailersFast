@@ -41,7 +41,6 @@ export function AssetsTab() {
     };
   }, [ingest]);
 
-
   return (
     <div className="flex h-full flex-col gap-3">
       {assets.length > 0 && (

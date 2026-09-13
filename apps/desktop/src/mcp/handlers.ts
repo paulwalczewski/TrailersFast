@@ -2,37 +2,37 @@ import {
   ALIGNMENTS,
   ASPECT_RATIOS,
   type Asset,
+  byId,
   CLIP_LENGTH_RANGE,
   type ClipMarker,
+  clamp,
   EXPORT_PRESETS,
+  effectiveScrim,
   FIT_MODES,
+  framesUsed,
   HEADING_WEIGHTS,
   IMAGE_FORMATS,
-  INTRO_ANIMATIONS,
   type ImageFormat,
+  INTRO_ANIMATIONS,
   MAX_CLIP_ZOOM,
+  orderedMarkers,
   THUMBNAIL_FONT_SIZE_RANGE,
   THUMBNAIL_SIZES,
   THUMBNAIL_TEMPLATES,
+  type ThumbnailFrame,
   TITLE_CARD_DURATION_RANGE,
   TITLE_CARD_FONT_SIZE_RANGE,
-  type ThumbnailFrame,
+  trailerDuration,
   VALIGNS,
   WATERMARK_FONT_SIZE_RANGE,
   WATERMARK_OPACITY_RANGE,
   WATERMARK_POSITIONS,
-  byId,
-  clamp,
-  effectiveScrim,
-  framesUsed,
-  orderedMarkers,
-  trailerDuration,
 } from "@trailerfast/core";
 import { type EditorMode, useTrailerStore } from "@trailerfast/state";
 import type { FileRef } from "@trailerfast/video-engine";
-import { performExport } from "../exportTrailer";
 import { performThumbnailExport } from "../exportThumbnail";
-import { type IngestOutcome, fileRefFromPath, isVideoPath } from "../useIngest";
+import { performExport } from "../exportTrailer";
+import { fileRefFromPath, type IngestOutcome, isVideoPath } from "../useIngest";
 
 /** What the bridge hook injects: ingest lives in a React hook, not the store. */
 export type McpDeps = {
@@ -44,7 +44,8 @@ function fail(msg: string): never {
 }
 
 function oneOf(value: string, allowed: readonly string[], what: string): void {
-  if (!allowed.includes(value)) fail(`${what} must be one of: ${allowed.join(", ")} (got "${value}")`);
+  if (!allowed.includes(value))
+    fail(`${what} must be one of: ${allowed.join(", ")} (got "${value}")`);
 }
 
 const inRange = (v: number, [lo, hi]: readonly [number, number]) => clamp(v, lo, hi);
@@ -157,7 +158,9 @@ export async function handleMcpRequest(
       const outcomes = await Promise.all(deps.ingest(paths.map(fileRefFromPath)));
       const assets = byId(s().assets);
       return {
-        added: outcomes.filter((o) => o.ok).flatMap((o) => (assets[o.id] ? [assetSummary(assets[o.id]!)] : [])),
+        added: outcomes
+          .filter((o) => o.ok)
+          .flatMap((o) => (assets[o.id] ? [assetSummary(assets[o.id]!)] : [])),
         failed: outcomes
           .filter((o) => !o.ok)
           .map((o) => ({ fileName: o.fileName, error: o.error })),
@@ -200,11 +203,19 @@ export async function handleMcpRequest(
     case "update_settings": {
       const patch: Record<string, unknown> = {};
       if (p.aspectRatio !== undefined) {
-        oneOf(p.aspectRatio, ASPECT_RATIOS.map((a) => a.id), "aspectRatio");
+        oneOf(
+          p.aspectRatio,
+          ASPECT_RATIOS.map((a) => a.id),
+          "aspectRatio",
+        );
         patch.aspectRatio = p.aspectRatio;
       }
       if (p.fitMode !== undefined) {
-        oneOf(p.fitMode, FIT_MODES.map((f) => f.id), "fitMode");
+        oneOf(
+          p.fitMode,
+          FIT_MODES.map((f) => f.id),
+          "fitMode",
+        );
         patch.fitMode = p.fitMode;
       }
       if (p.defaultClipLengthSec !== undefined) {
@@ -221,9 +232,17 @@ export async function handleMcpRequest(
       if (p.align !== undefined) oneOf(p.align, ALIGNMENTS, "align");
       if (p.vAlign !== undefined) oneOf(p.vAlign, VALIGNS, "vAlign");
       if (p.animation !== undefined)
-        oneOf(p.animation, INTRO_ANIMATIONS.map((a) => a.id), "animation");
+        oneOf(
+          p.animation,
+          INTRO_ANIMATIONS.map((a) => a.id),
+          "animation",
+        );
       if (p.headingWeight !== undefined)
-        oneOf(String(p.headingWeight), HEADING_WEIGHTS.map((w) => w.id), "headingWeight");
+        oneOf(
+          String(p.headingWeight),
+          HEADING_WEIGHTS.map((w) => w.id),
+          "headingWeight",
+        );
       if (p.durationSec !== undefined)
         patch.durationSec = inRange(p.durationSec, TITLE_CARD_DURATION_RANGE);
       if (p.fontSizePx !== undefined)
@@ -239,7 +258,11 @@ export async function handleMcpRequest(
     case "update_watermark": {
       const patch: Record<string, unknown> = { ...(p as object) };
       if (p.position !== undefined)
-        oneOf(p.position, WATERMARK_POSITIONS.map((w) => w.id), "position");
+        oneOf(
+          p.position,
+          WATERMARK_POSITIONS.map((w) => w.id),
+          "position",
+        );
       if (p.opacity !== undefined) patch.opacity = inRange(p.opacity, WATERMARK_OPACITY_RANGE);
       if (p.fontSizePx !== undefined)
         patch.fontSizePx = inRange(p.fontSizePx, WATERMARK_FONT_SIZE_RANGE);
@@ -288,11 +311,19 @@ export async function handleMcpRequest(
     case "update_thumbnail": {
       const patch: Record<string, unknown> = {};
       if (p.template !== undefined) {
-        oneOf(p.template, THUMBNAIL_TEMPLATES.map((t) => t.id), "template");
+        oneOf(
+          p.template,
+          THUMBNAIL_TEMPLATES.map((t) => t.id),
+          "template",
+        );
         patch.template = p.template;
       }
       if (p.aspectRatio !== undefined) {
-        oneOf(p.aspectRatio, ASPECT_RATIOS.map((a) => a.id), "aspectRatio");
+        oneOf(
+          p.aspectRatio,
+          ASPECT_RATIOS.map((a) => a.id),
+          "aspectRatio",
+        );
         patch.aspectRatio = p.aspectRatio;
       }
       if (p.scrim !== undefined) patch.scrim = clamp(p.scrim, 0, 0.8);
@@ -305,7 +336,11 @@ export async function handleMcpRequest(
       if (p.align !== undefined) oneOf(p.align, ALIGNMENTS, "align");
       if (p.vAlign !== undefined) oneOf(p.vAlign, VALIGNS, "vAlign");
       if (p.headingWeight !== undefined)
-        oneOf(String(p.headingWeight), HEADING_WEIGHTS.map((w) => w.id), "headingWeight");
+        oneOf(
+          String(p.headingWeight),
+          HEADING_WEIGHTS.map((w) => w.id),
+          "headingWeight",
+        );
       if (p.fontSizePx !== undefined)
         patch.fontSizePx = inRange(p.fontSizePx, THUMBNAIL_FONT_SIZE_RANGE);
       s().updateThumbnailTitle(patch);
@@ -344,9 +379,17 @@ export async function handleMcpRequest(
       if (s().thumbnail.frames.length === 0)
         fail("the thumbnail has no frames — add_thumbnail_frame first");
       const format = (p.format as string | undefined) ?? "png";
-      oneOf(format, IMAGE_FORMATS.map((f) => f.id), "format");
+      oneOf(
+        format,
+        IMAGE_FORMATS.map((f) => f.id),
+        "format",
+      );
       const size = (p.size as string | undefined) ?? "1080";
-      oneOf(size, THUMBNAIL_SIZES.map((x) => x.id), "size");
+      oneOf(
+        size,
+        THUMBNAIL_SIZES.map((x) => x.id),
+        "size",
+      );
       const shortSide = THUMBNAIL_SIZES.find((x) => x.id === size)?.shortSide ?? 1080;
       const quality = clamp((p.quality as number | undefined) ?? 90, 30, 100);
       const outputPath = p.outputPath as string;
@@ -361,7 +404,11 @@ export async function handleMcpRequest(
     case "export_trailer": {
       if (s().markers.length === 0) fail("the trailer has no clips — add_clip first");
       const preset = (p.preset as string | undefined) ?? "standard-1080";
-      oneOf(preset, EXPORT_PRESETS.map((x) => x.id), "preset");
+      oneOf(
+        preset,
+        EXPORT_PRESETS.map((x) => x.id),
+        "preset",
+      );
       const codec = (p.codec as string | undefined) ?? "h264";
       oneOf(codec, ["h264", "hevc"], "codec");
       const outputPath = p.outputPath as string;

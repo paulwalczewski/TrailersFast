@@ -48,7 +48,9 @@ export function filmstripFrameAt(
   durationSec: number,
 ): string | undefined {
   if (urls.length === 0 || durationSec <= 0) return undefined;
-  return urls[Math.min(urls.length - 1, Math.max(0, Math.floor((sec / durationSec) * urls.length)))];
+  return urls[
+    Math.min(urls.length - 1, Math.max(0, Math.floor((sec / durationSec) * urls.length)))
+  ];
 }
 
 export function totalFrames(clips: { durationInFrames: number }[]): number {

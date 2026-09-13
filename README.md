@@ -1,0 +1,104 @@
+# Trailers Fast
+
+**The fastest way from a folder of long videos to a finished trailer.** Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling — and every one of those steps can also be driven by an AI agent over MCP.
+
+Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player for preview · bundled FFmpeg for export. Nothing leaves your machine.
+
+---
+
+## Why it's fast
+
+Most editors make you *build* a trailer. Trailers Fast makes you *point at* one:
+
+1. **Drop videos** onto the Assets panel. They line up end-to-end on one source filmstrip.
+2. **Click the filmstrip** wherever something good happens. Each click marks a clip, centered on the cursor, at your default length (3 s out of the box).
+3. **Export.** Clips are trimmed, normalized and concatenated by FFmpeg in a single pass, with progress in the dialog.
+
+That's the whole workflow. Reordering is drag-and-drop, trimming is dragging a clip's edge, and every action is undoable with ⌘Z. The preview plays smoothly from small proxy encodes generated in the background, so you're never waiting on the source files.
+
+## Built-in AI (MCP)
+
+Trailers Fast runs a local, token-gated [MCP](https://modelcontextprotocol.io) server. Point Claude Code, Claude Desktop, Cursor, Codex, Gemini CLI or any Streamable-HTTP MCP client at it and say *"make me a 30-second trailer from these files"*. The agent gets 22 tools that mirror everything the UI can do:
+
+- **See** — `list_assets`, `get_project`, `detect_scenes` (FFmpeg scene-change detection with scores), `get_frames` (actual stills the model can look at)
+- **Edit** — `add_assets`, `add_clip` / `update_clip` / `remove_clip`, `set_clip_transform`, `update_settings`, `update_intro` / `update_outro` / `update_watermark`
+- **Thumbnail** — `add_thumbnail_frame`, `update_thumbnail`, `update_thumbnail_title`, `set_thumbnail_frame_transform`
+- **Ship** — `export_trailer`, `export_thumbnail`
+
+You watch the trailer assemble live in the app while the agent works, and every tool call is a normal undo step. The **AI · MCP** button in the header shows connection status, ready-to-paste config snippets for each client, and a log of what the agent did.
+
+## Everything else
+
+| | |
+|---|---|
+| **Title cards** | Intro and outro with heading + description, 30 fonts (7 bundled so they render identically everywhere), weight, size, color, alignment, hard shadow, and four animations — fade, slide, slide-up, zoom. Emoji work. |
+| **Watermark** | Text in any corner, with opacity, font, shadow. Burned in by FFmpeg `drawtext`. |
+| **Aspect ratios** | 16:9, 9:16, 1:1, 4:5, 4:3 — for the trailer and, independently, the thumbnail. Cover (crop) or contain (letterbox). |
+| **Per-clip framing** | Pan and zoom any clip inside the canvas; offsets are normalized so black bars are impossible. Also horizontal flip. |
+| **Thumbnails** | Second editor sharing the same footage: pick frames off the filmstrip, lay them out as a mosaic, stripes, or a single frame, add a title with a readability scrim, export PNG / JPEG / WebP / AVIF up to 4K. |
+| **Export presets** | 4K → 480p, H.264 or H.265, tuned CRF/preset/audio per tier, sizes shown for your aspect ratio. |
+| **Preview = export** | The preview's framing math, title cards and thumbnail renderer are the *same code* the export uses. |
+
+## Getting started
+
+Prerequisites: [Rust](https://rustup.rs) (stable), Node 22+, [pnpm](https://pnpm.io) 10, and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS (Xcode Command Line Tools on macOS; `webkit2gtk` and friends on Linux).
+
+```sh
+git clone https://github.com/paulwalczewski/quicktrailers.git trailerfast
+cd trailerfast
+pnpm install
+scripts/fetch-ffmpeg.sh   # one-time: downloads a freetype-enabled FFmpeg sidecar for your platform
+pnpm dev                  # launches the desktop app with hot reload
+```
+
+`scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64) and Linux x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it in CI.
+
+Build an installer with `pnpm tauri build`. Other useful commands:
+
+```sh
+pnpm typecheck      # tsc across the workspace
+pnpm lint           # Biome (lint + format check)
+pnpm format         # Biome, writing fixes
+cargo test          # Rust unit tests (run in apps/desktop/src-tauri)
+```
+
+### Connecting an AI agent
+
+Open the app → **AI · MCP** → pick your client tab → copy the snippet. For Claude Code it's one line:
+
+```sh
+claude mcp add --transport http trailerfast http://127.0.0.1:4823/mcp --header "Authorization: Bearer <token from the app>"
+```
+
+The server binds to `127.0.0.1` only, requires the per-install bearer token, rejects cross-origin browser requests, and can be switched off from the same dialog. An agent can read any video the user can and write exports anywhere the user can — but never over an existing file.
+
+## How it's put together
+
+```
+apps/desktop/          Tauri app: React UI (src/) + Rust backend (src-tauri/)
+  src-tauri/src/
+    lib.rs             Tauri commands: probe, thumbnails, preview proxies, export
+    export.rs          The FFmpeg filter graph: trim → normalize → concat → overlays → encode
+    mcp.rs             Embedded MCP server (rmcp + axum) and its 22 tools
+    scenes.rs          Scene-change detection
+    image.rs           Frame extraction + still-image encoding for the thumbnail editor
+packages/core/         Pure domain model + math shared by preview and export (no React, no Tauri)
+packages/state/        Zustand store with undo/redo
+packages/video-engine/ The UI ↔ platform seam; the only place that imports @tauri-apps/api
+docs/adr/              Decisions that aren't obvious from the code
+```
+
+UI code never calls Tauri directly — it goes through the `VideoEngine` interface in `packages/video-engine`, so a web build is a second implementation of that interface away.
+
+## Licensing
+
+The source in this repository is **MIT** (see [LICENSE](LICENSE)). Two things you bundle are not:
+
+- **FFmpeg.** The builds `fetch-ffmpeg.sh` downloads are GPL-licensed. If you distribute installers, you're distributing GPL FFmpeg and need to comply with its terms (offer its source, keep its notices). The FFmpeg binary is not in this repo.
+- **Remotion.** The preview uses `@remotion/player`, which is free for individuals and small teams but [requires a company license](https://remotion.dev/license) beyond that.
+
+The bundled fonts (Pacifico, Permanent Marker, Great Vibes, Lobster, Bangers, Sacramento, Kalam) are OFL / Apache-2.0; their licenses ship alongside them in `apps/desktop/src/assets/fonts/`.
+
+## Contributing
+
+Issues and PRs welcome. Before opening a PR: `pnpm lint && pnpm typecheck` and `cargo test` should pass, and if you touch the export pipeline read `docs/adr/` first — a few invariants there fail silently when broken. Commit messages are one sentence saying what changed for the user.

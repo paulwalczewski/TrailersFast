@@ -60,7 +60,8 @@ export function clampClipResize(
   lengthSec: number,
   assetDurationSec: number,
 ): { startSec: number; lengthSec: number } {
-  if (assetDurationSec <= 0) return { startSec: Math.max(0, startSec), lengthSec: Math.max(MIN_CLIP_SEC, lengthSec) };
+  if (assetDurationSec <= 0)
+    return { startSec: Math.max(0, startSec), lengthSec: Math.max(MIN_CLIP_SEC, lengthSec) };
   const start = Math.min(Math.max(0, startSec), Math.max(0, assetDurationSec - MIN_CLIP_SEC));
   const length = Math.min(Math.max(MIN_CLIP_SEC, lengthSec), assetDurationSec - start);
   return { startSec: start, lengthSec: length };

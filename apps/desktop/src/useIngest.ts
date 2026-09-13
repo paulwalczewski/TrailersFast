@@ -1,6 +1,6 @@
 import { VIDEO_EXTENSIONS } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import type { FileRef } from "@trailerfast/video-engine";
+import type { FileRef, MediaInfo } from "@trailerfast/video-engine";
 import { useCallback } from "react";
 import { engine, isTauri } from "./engine";
 import { createJobLimiter } from "./jobLimiter";
@@ -43,7 +43,7 @@ export function useIngest(): (files: FileRef[]) => Promise<IngestOutcome>[] {
     (files: FileRef[]) =>
       files.map(async (f): Promise<IngestOutcome> => {
         const id = addPlaceholder(f.path, f.fileName);
-        let info;
+        let info: MediaInfo;
         try {
           info = await engine.probe(f);
           setAssetProbed(id, info);

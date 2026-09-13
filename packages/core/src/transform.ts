@@ -33,7 +33,9 @@ export function clipRenderBox(
     height = canvasH * zoom;
   } else {
     const base =
-      fit === "contain" ? Math.min(canvasW / srcW, canvasH / srcH) : Math.max(canvasW / srcW, canvasH / srcH);
+      fit === "contain"
+        ? Math.min(canvasW / srcW, canvasH / srcH)
+        : Math.max(canvasW / srcW, canvasH / srcH);
     width = srcW * base * zoom;
     height = srcH * base * zoom;
   }

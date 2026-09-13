@@ -19,6 +19,13 @@ to freetype — an unsafe C parser — during export.
 Two bugs fell out of the same fix: title-card PNGs were never unlinked (one leaked file per
 export), and thumbnail staging keyed on pid alone, so two concurrent saves clobbered each other.
 
+## The one exception: the proxy cache
+
+Preview proxies are deliberately named by a hash of their FFmpeg arguments so a restart
+finds them again. A predictable name is only safe somewhere other local users cannot
+pre-create it, so the cache lives in Tauri's per-user `app_cache_dir()` (2026-09-13;
+it was `temp_dir()/trailerfast_proxies` before, which broke this rule).
+
 ## Rule
 
 If you find yourself writing `std::env::temp_dir().join(format!(...))`, that's the bug.

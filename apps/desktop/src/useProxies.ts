@@ -1,4 +1,4 @@
-import { PROXY_SIDE, byId, proxyKey } from "@trailerfast/core";
+import { byId, PROXY_SIDE, proxyKey } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useMemo, useRef } from "react";
 import { engine, isTauri } from "./engine";

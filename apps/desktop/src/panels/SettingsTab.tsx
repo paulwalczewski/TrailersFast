@@ -1,5 +1,5 @@
 import { Label } from "@heroui/react";
-import { FIT_MODES, type FitMode } from "@trailerfast/core";
+import { CLIP_LENGTH_RANGE, FIT_MODES, type FitMode } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { AspectRatioPicker } from "../ui/AspectRatioPicker";
 import { LabeledSlider, LabeledSwitch } from "../ui/Fields";
@@ -38,8 +38,8 @@ export function SettingsTab() {
         <LabeledSlider
           label="Length"
           value={settings.defaultClipLengthSec}
-          min={1}
-          max={10}
+          min={CLIP_LENGTH_RANGE[0]}
+          max={CLIP_LENGTH_RANGE[1]}
           step={0.5}
           onChange={setLen}
           format={(v) => `${v.toFixed(1)}s`}
@@ -75,7 +75,9 @@ export function SettingsTab() {
                 }`}
               >
                 <FitIcon mode={f.id as FitMode} />
-                <span className={`text-xs font-medium capitalize ${active ? "text-accent" : "text-foreground"}`}>
+                <span
+                  className={`text-xs font-medium capitalize ${active ? "text-accent" : "text-foreground"}`}
+                >
                   {f.id}
                 </span>
               </button>

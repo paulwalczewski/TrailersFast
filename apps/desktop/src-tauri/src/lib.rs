@@ -77,8 +77,7 @@ pub(crate) fn ffmpeg_raw() -> Result<std::process::Command, String> {
     Ok(std::process::Command::new(ffmpeg_bin()?))
 }
 
-/// Verify the bundled sidecar is present. Kept as a named step so callers read
-/// the same as before; it no longer touches the network.
+/// Verify the bundled sidecar is present. Purely local — never the network.
 pub(crate) fn ensure_ffmpeg() -> Result<(), String> {
     ffmpeg_bin().map(|_| ())
 }
@@ -102,7 +101,7 @@ pub(crate) async fn off_main_thread<T: Send + 'static>(
 }
 
 /// Probe a media file by parsing `ffmpeg -i <file>` output events. Uses ffmpeg
-/// (always present) rather than ffprobe (not downloaded on macOS).
+/// rather than ffprobe so the bundle ships a single binary.
 #[tauri::command]
 async fn probe_media(app: tauri::AppHandle, path: String) -> Result<MediaInfo, String> {
     // Every source file the user ingests is probed exactly once, right here, so
@@ -115,7 +114,6 @@ async fn probe_media(app: tauri::AppHandle, path: String) -> Result<MediaInfo, S
 
 /// Grant the webview `asset:` read access to one file the user chose.
 fn allow_asset(app: &tauri::AppHandle, path: &str) {
-    use tauri::Manager;
     if let Err(e) = app.asset_protocol_scope().allow_file(path) {
         log::warn!("could not grant asset access to {path}: {e}");
     }
@@ -194,9 +192,9 @@ pub(crate) fn extract_frame_encoded(
 ) -> Result<Vec<u8>, String> {
     ensure_ffmpeg()?;
     let job = THUMB_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    // Random name in a 0700 dir — a predictable path in the shared temp dir is
-    // pre-creatable as a symlink by another local user, redirecting FFmpeg's
-    // `-y` write. `job` alone only prevented *self*-collisions.
+    // Random name in a 0700 dir (ADR 0003): a predictable path in the shared
+    // temp dir is pre-creatable as a symlink by another local user, redirecting
+    // FFmpeg's `-y` write. `job` only prevents self-collisions.
     let outfile = tempfile::Builder::new()
         .prefix(&format!("tf_frame_{job}_"))
         .suffix(&format!(".{ext}"))
@@ -261,8 +259,9 @@ async fn generate_proxy(
     length_sec: f64,
     short_side: u32,
 ) -> Result<String, String> {
+    let dir = proxy_dir(&app)?;
     let out = off_main_thread(move || {
-        generate_proxy_blocking(&path, start_sec, length_sec, short_side)
+        generate_proxy_blocking(&dir, &path, start_sec, length_sec, short_side)
     })
     .await?;
     // The proxy is what the preview actually plays; allow the file we just wrote.
@@ -270,18 +269,34 @@ async fn generate_proxy(
     Ok(out)
 }
 
-fn proxy_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join("trailerfast_proxies")
+/// Where preview proxies live: the per-user app cache dir, not the shared temp
+/// dir. Proxies are keyed by a predictable hash so they can be found again
+/// across restarts, and a predictable name is only safe somewhere other local
+/// users can't pre-create it (ADR 0003).
+fn proxy_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("no cache directory: {e}"))?
+        .join("proxies");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    Ok(dir)
 }
 
 /// Preview proxies survive restarts on purpose — a cache hit skips the whole
-/// transcode. Nothing ever deleted them, though, so the directory grew without
-/// bound. Sweep it at launch: drop anything stale, then evict oldest-first
-/// until the cache is back under budget. Returns the bytes reclaimed.
-fn prune_proxy_cache() -> u64 {
+/// transcode — so the directory needs a sweep or it grows without bound. At
+/// launch: drop anything stale, then evict oldest-first until the cache is
+/// back under budget. Returns the bytes reclaimed.
+fn prune_proxy_cache(app: &tauri::AppHandle) -> u64 {
     const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
     const MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-    prune_dir(&proxy_dir(), MAX_AGE, MAX_BYTES)
+    match proxy_dir(app) {
+        Ok(dir) => prune_dir(&dir, MAX_AGE, MAX_BYTES),
+        Err(e) => {
+            log::warn!("proxy cache sweep skipped: {e}");
+            0
+        }
+    }
 }
 
 fn prune_dir(dir: &std::path::Path, max_age: std::time::Duration, max_bytes: u64) -> u64 {
@@ -334,6 +349,7 @@ fn prune_dir(dir: &std::path::Path, max_age: std::time::Duration, max_bytes: u64
 }
 
 fn generate_proxy_blocking(
+    dir: &std::path::Path,
     path: &str,
     start_sec: f64,
     length_sec: f64,
@@ -390,8 +406,6 @@ fn generate_proxy_blocking(
     args.hash(&mut hasher);
     let hash = hasher.finish();
 
-    let dir = proxy_dir();
-    let _ = std::fs::create_dir_all(&dir);
     let out = dir.join(format!("proxy_{hash:016x}.mp4"));
     if std::fs::metadata(&out).map(|m| m.len() > 0).unwrap_or(false) {
         // Touch it so the cache sweep's oldest-first eviction sees real usage
@@ -449,6 +463,64 @@ async fn export_trailer(
     Ok(warning)
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    // Resolve (and memoize) the bundled sidecar off the main thread so the
+    // first probe doesn't pay for the filesystem check, and a missing binary is
+    // logged at startup rather than surfacing as a failed export later.
+    std::thread::spawn(|| {
+        if let Err(e) = ffmpeg_bin() {
+            log::error!("{e}");
+        }
+    });
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
+                )?;
+            }
+
+            // Off the main thread: a large stale cache means a lot of unlink
+            // syscalls, and none of it gates the first paint.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let freed = prune_proxy_cache(&handle);
+                if freed > 0 {
+                    log::info!("pruned {} MB of stale preview proxies", freed / (1024 * 1024));
+                }
+            });
+
+            // Embedded MCP server (AI integration): localhost HTTP, token-gated.
+            let bridge = Arc::new(mcp::McpBridge::new(app.handle().clone()));
+            let token = mcp::load_or_create_token(app.handle())?;
+            app.manage(mcp::McpState::new(bridge, token));
+            if mcp::load_enabled(app.handle()) {
+                app.state::<mcp::McpState>().start();
+            }
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            probe_media,
+            generate_thumbnails,
+            generate_proxy,
+            export_trailer,
+            image::extract_frames,
+            image::image_formats,
+            image::save_image,
+            mcp::mcp_status,
+            mcp::mcp_respond,
+            mcp::mcp_set_enabled
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,9 +543,9 @@ mod tests {
         v
     }
 
-    /// The proxy cache used to grow forever. The sweep must drop stale entries,
-    /// then evict oldest-first down to budget — and leave fresh, in-budget
-    /// proxies alone so restarts still hit the cache instead of re-transcoding.
+    /// The sweep must drop stale entries, then evict oldest-first down to
+    /// budget — and leave fresh, in-budget proxies alone so restarts still hit
+    /// the cache instead of re-transcoding.
     #[test]
     fn prunes_stale_then_evicts_oldest_over_budget() {
         let dir = std::env::temp_dir().join(format!("tf_prune_test_{}", std::process::id()));
@@ -484,7 +556,7 @@ mod tests {
         write_proxy(&dir, "old.mp4", 100, 30 * day); // stale → always dropped
         write_proxy(&dir, "a.mp4", 100, 3 * day); // oldest fresh → evicted for budget
         write_proxy(&dir, "b.mp4", 100, 2 * day);
-        write_proxy(&dir, "c.mp4", 100, 1 * day);
+        write_proxy(&dir, "c.mp4", 100, day);
         write_proxy(&dir, "keep.txt", 500, 30 * day); // not ours — never touched
 
         // Budget of 250 leaves room for two of the three fresh 100-byte proxies.
@@ -534,7 +606,7 @@ mod tests {
             .arg("-y")
             .arg("-display_rotation")
             .arg("-90")
-            .input(&plain.to_string_lossy())
+            .input(plain.to_string_lossy())
             .arg("-c")
             .arg("copy")
             .arg(rotated.to_string_lossy().to_string());
@@ -545,61 +617,4 @@ mod tests {
         let info = probe_media_blocking(&rotated.to_string_lossy()).unwrap();
         assert_eq!((info.width, info.height), (360, 640));
     }
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Resolve (and memoize) the bundled sidecar off the main thread so the
-    // first probe doesn't pay for the filesystem check, and a missing binary is
-    // logged at startup rather than surfacing as a failed export later.
-    std::thread::spawn(|| {
-        if let Err(e) = ffmpeg_bin() {
-            log::error!("{e}");
-        }
-    });
-
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
-            // Off the main thread: a large stale cache means a lot of unlink
-            // syscalls, and none of it gates the first paint.
-            std::thread::spawn(|| {
-                let freed = prune_proxy_cache();
-                if freed > 0 {
-                    log::info!("pruned {} MB of stale preview proxies", freed / (1024 * 1024));
-                }
-            });
-
-            // Embedded MCP server (AI integration): localhost HTTP, token-gated.
-            let bridge = Arc::new(mcp::McpBridge::new(app.handle().clone()));
-            let token = mcp::load_or_create_token(app.handle())?;
-            app.manage(mcp::McpState::new(bridge, token));
-            if mcp::load_enabled(app.handle()) {
-                app.state::<mcp::McpState>().start();
-            }
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            probe_media,
-            generate_thumbnails,
-            generate_proxy,
-            export_trailer,
-            image::extract_frames,
-            image::image_formats,
-            image::save_image,
-            mcp::mcp_status,
-            mcp::mcp_respond,
-            mcp::mcp_set_enabled
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }

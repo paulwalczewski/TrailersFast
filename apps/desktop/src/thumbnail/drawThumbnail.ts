@@ -5,11 +5,11 @@
  */
 import {
   type ClipTransform,
+  clipRenderBox,
+  effectiveScrim,
   PREVIEW_SHORT_SIDE,
   type ThumbnailConfig,
   type ThumbnailTextConfig,
-  clipRenderBox,
-  effectiveScrim,
   templateCells,
   thumbnailTextActive,
 } from "@trailerfast/core";
@@ -78,7 +78,6 @@ function drawCover(
   ctx.drawImage(frame.image, cell.x + box.left, cell.y + box.top, box.width, box.height);
   ctx.restore();
 }
-
 
 /** Split `text` into lines that each fit `maxWidth` under the current font. */
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {

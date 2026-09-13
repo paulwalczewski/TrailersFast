@@ -207,7 +207,7 @@ export type ExportPreset =
   | "low-720"
   | "low-480";
 
-export type ExportCodec = "h264" | "hevc" | "av1";
+export type ExportCodec = "h264" | "hevc";
 
 export type ExportOpts = {
   preset: ExportPreset;

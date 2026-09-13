@@ -1,21 +1,14 @@
 import {
   type ClipTransform,
-  type FitMode,
   clipRenderBox,
+  type FitMode,
   filmstripFrameAt,
   totalFrames,
 } from "@trailerfast/core";
 import { useMemo } from "react";
-import {
-  AbsoluteFill,
-  Sequence,
-  Series,
-  Video,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
+import { AbsoluteFill, Sequence, Series, useCurrentFrame, useVideoConfig, Video } from "remotion";
 import { clipBoxStyle, useMediaReady } from "../ui/clipMedia";
-import { IntroTitle, type IntroProps } from "./IntroTitle";
+import { type IntroProps, IntroTitle } from "./IntroTitle";
 import { WatermarkOverlay, type WatermarkProps } from "./WatermarkOverlay";
 
 export const PREVIEW_FPS = 30;

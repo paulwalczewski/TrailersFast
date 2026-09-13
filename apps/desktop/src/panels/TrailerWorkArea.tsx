@@ -38,7 +38,7 @@ export function TrailerWorkArea() {
       e.preventDefault();
       if (markers.length > 0) {
         const p = expanded ? modalPlayerRef.current : playerRef.current;
-        if (p) (p.isPlaying() ? p.pause() : p.play());
+        if (p) p.isPlaying() ? p.pause() : p.play();
       } else {
         const v = sourceVideoRef.current;
         if (v) v.paused ? void v.play().catch(() => {}) : v.pause();

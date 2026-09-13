@@ -1,9 +1,9 @@
 import { Button } from "@heroui/react";
 import {
-  THUMBNAIL_TEMPLATES,
-  type ThumbnailTemplate,
   byId,
   filmstripFrameAt,
+  THUMBNAIL_TEMPLATES,
+  type ThumbnailTemplate,
   templateCells,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
@@ -49,7 +49,7 @@ export function ThumbnailTemplatesTab() {
   const [framingId, setFramingId] = useState<string | null>(null);
 
   /** Seed the picks from the trailer's clips — one frame per clip, at its middle. */
-  function useTrailerClips() {
+  function seedFromTrailerClips() {
     setFrames(
       [...markers]
         .sort((a, b) => a.order - b.order)
@@ -165,7 +165,7 @@ export function ThumbnailTemplatesTab() {
         )}
 
         {markers.length > 0 ? (
-          <Button variant="outline" onPress={useTrailerClips}>
+          <Button variant="outline" onPress={seedFromTrailerClips}>
             Use the trailer&apos;s {markers.length} clip{markers.length === 1 ? "" : "s"}
           </Button>
         ) : null}

@@ -1,16 +1,18 @@
 import { Button } from "@heroui/react";
 import {
+  canvasFor,
   IMAGE_FORMATS,
   type ImageFormat,
   THUMBNAIL_SIZES,
   type ThumbnailSize,
-  canvasFor,
 } from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
 import { useEffect, useState } from "react";
 import { engine, isTauri } from "../engine";
 import { performThumbnailExport } from "../exportThumbnail";
+import { ChoiceButton } from "../ui/ChoiceButton";
 import { LabeledSlider } from "../ui/Fields";
+import { ModalHeader } from "../ui/ModalHeader";
 import { ModalShell } from "../ui/ModalShell";
 import { ThumbnailPreview } from "./ThumbnailPreview";
 
@@ -76,18 +78,7 @@ export function ThumbnailExportDialog({ onClose }: { onClose: () => void }) {
       onClose={busy ? () => {} : onClose}
       className="w-[520px] max-w-full rounded-2xl bg-surface p-5 shadow-xl"
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Export thumbnail</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          aria-label="Close"
-          className="grid size-7 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-tertiary hover:text-foreground disabled:opacity-40"
-        >
-          ✕
-        </button>
-      </div>
+      <ModalHeader title="Export thumbnail" onClose={onClose} disabled={busy} className="mb-0" />
       <p className="mb-3 text-xs text-muted">
         {output.width}×{output.height} · {spec.label}
       </p>
@@ -98,19 +89,15 @@ export function ThumbnailExportDialog({ onClose }: { onClose: () => void }) {
 
       <div className="mb-4 flex gap-2">
         {THUMBNAIL_SIZES.map((s) => (
-          <button
+          <ChoiceButton
             key={s.id}
-            type="button"
+            selected={size === s.id}
+            onSelect={() => setSize(s.id)}
             disabled={busy}
-            onClick={() => setSize(s.id)}
-            className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-              size === s.id
-                ? "border-accent bg-accent/10"
-                : "border-border bg-surface-secondary hover:bg-surface-tertiary"
-            }`}
+            className="flex-1"
           >
             <span className="font-medium">{s.label}</span>
-          </button>
+          </ChoiceButton>
         ))}
       </div>
 
@@ -118,21 +105,17 @@ export function ThumbnailExportDialog({ onClose }: { onClose: () => void }) {
         {IMAGE_FORMATS.map((f) => {
           const supported = available.includes(f.id);
           return (
-            <button
+            <ChoiceButton
               key={f.id}
-              type="button"
+              selected={format === f.id}
+              onSelect={() => setFormat(f.id)}
               disabled={busy || !supported}
-              onClick={() => setFormat(f.id)}
               title={supported ? undefined : "This FFmpeg build can't write this format"}
-              className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors disabled:opacity-40 ${
-                format === f.id
-                  ? "border-accent bg-accent/10"
-                  : "border-border bg-surface-secondary hover:bg-surface-tertiary"
-              }`}
+              className="flex items-center justify-between"
             >
               <span className="font-medium">{f.label}</span>
               <span className="text-xs text-muted">{f.hint}</span>
-            </button>
+            </ChoiceButton>
           );
         })}
       </div>

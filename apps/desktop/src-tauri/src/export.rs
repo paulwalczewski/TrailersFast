@@ -79,6 +79,13 @@ pub struct ExportPlan {
     pub fit_mode: String,
 }
 
+/// Encoders and x264/x265 speed presets the plan builder may name (see
+/// `resolveEncode` and `PRESET_TABLE` in @trailerfast/core).
+const VCODECS: &[&str] = &["libx264", "libx265"];
+const FF_PRESETS: &[&str] = &[
+    "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow",
+];
+
 fn fmt(v: f64) -> String {
     format!("{v:.3}")
 }
@@ -134,11 +141,10 @@ static BUNDLED_FONTS: &[(&str, &str, &[u8])] = &[
 /// a cache dir once and return the file path so freetype can read it.
 fn bundled_font_path(lower: &str) -> Option<String> {
     let (_, file, bytes) = BUNDLED_FONTS.iter().find(|(name, _, _)| lower.contains(name))?;
-    // Per-process 0700 dir with a random name, kept alive for the process.
-    // The old fixed `/tmp/trailersfast-fonts` was pre-creatable: another local
-    // user could plant a file under the expected name and the `path.exists()`
-    // check would hand it straight to freetype, an unsafe C parser, during
-    // export.
+    // Per-process 0700 dir with a random name (ADR 0003). A fixed path in the
+    // shared temp dir would let another local user plant a file under the
+    // expected name, and the `path.exists()` check below would hand it straight
+    // to freetype — an unsafe C parser — during export.
     static FONT_DIR: std::sync::OnceLock<Option<tempfile::TempDir>> = std::sync::OnceLock::new();
     let dir = FONT_DIR
         .get_or_init(|| tempfile::Builder::new().prefix("trailersfast-fonts-").tempdir().ok())
@@ -151,9 +157,8 @@ fn bundled_font_path(lower: &str) -> Option<String> {
     Some(path.to_string_lossy().into_owned())
 }
 
-/// macOS system font families → (regular path, optional bold path). One table
-/// shared by both resolvers: `find_font_for` takes the regular path, while
-/// `font_file_for` prefers the bold path for bold weights. Most specific first.
+/// macOS system font families → (regular path, optional bold path), most
+/// specific first. Matched by substring against a lowercased family name.
 static MAC_FONTS: &[(&str, &str, Option<&str>)] = &[
     ("avenir next", "/System/Library/Fonts/Avenir Next.ttc", None),
     ("avenir", "/System/Library/Fonts/Avenir.ttc", None),
@@ -181,19 +186,9 @@ static MAC_FONTS: &[(&str, &str, Option<&str>)] = &[
     ("apple chancery", "/System/Library/Fonts/Supplemental/Apple Chancery.ttf", None),
 ];
 
-/// Best-effort resolve the chosen font family to a font file. Bundled fonts win
-/// (they exist on any OS), then macOS system families, then any available font.
+/// Best-effort resolve the chosen font family to a font file at regular weight.
 fn find_font_for(family: &str) -> Option<String> {
-    let lower = family.to_lowercase();
-    if let Some(p) = bundled_font_path(&lower) {
-        return Some(p);
-    }
-    for (name, reg, _bold) in MAC_FONTS {
-        if lower.contains(name) && std::path::Path::new(reg).exists() {
-            return Some((*reg).to_string());
-        }
-    }
-    find_font()
+    font_file_for(family, 400)
 }
 
 /// Remove characters that would break a single-quoted drawtext value.
@@ -243,8 +238,9 @@ fn shadow_arg(enabled: bool, intensity: f64, x: i64, y: i64) -> String {
     }
 }
 
-/// Resolve a font family + CSS weight to an explicit font file, preferring a
-/// bold file for bold weights, falling back to any available font.
+/// Resolve a font family + CSS weight to an explicit font file. Bundled fonts
+/// win (they exist on any OS), then macOS system families — a bold file for
+/// bold weights where one exists — then any available font.
 fn font_file_for(family: &str, weight: u32) -> Option<String> {
     let lower = family.to_lowercase();
     // Bundled fonts are single-weight and portable — prefer them for any weight.
@@ -371,7 +367,7 @@ fn build_intro_chain(intro: &ExportIntro, w: u32, h: u32) -> String {
 /// Watermark drawtext shown across the whole trailer, positioned in a corner.
 /// Routed through `one_drawtext` so quoting/escaping lives in one place; a huge
 /// `enable` window keeps it visible for the entire clip.
-fn build_watermark(wm: &ExportWatermark, font: &str, w: u32, _h: u32) -> String {
+fn build_watermark(wm: &ExportWatermark, font: &str, w: u32) -> String {
     let margin = (w as f64 * 0.03) as i64;
     let (x, y) = match wm.position.as_str() {
         "top-left" => (format!("{margin}"), format!("{margin}")),
@@ -408,8 +404,8 @@ fn resolve_overlay_font(plan: &ExportPlan) -> Option<String> {
 /// True when intro/watermark text is requested but this ffmpeg build can't render
 /// it (no `drawtext`), so it will be dropped from the output.
 pub fn overlay_will_be_skipped(plan: &ExportPlan) -> bool {
-    // The intro is now an image overlay (works on any ffmpeg); only the watermark
-    // still needs drawtext/freetype.
+    // The intro is an image overlay (works on any ffmpeg); only the watermark
+    // needs drawtext/freetype.
     plan.watermark.is_some() && !(has_drawtext() && resolve_overlay_font(plan).is_some())
 }
 
@@ -527,7 +523,7 @@ fn build_filter_complex(
     if let (Some(font), Some(wm)) = (drawtext_font, &plan.watermark) {
         let wm_font = find_font_for(&wm.font_family);
         let wm_font = wm_font.as_deref().unwrap_or(font);
-        fc.push_str(&format!(";[{cur}]{}[wv]", build_watermark(wm, wm_font, w, h)));
+        fc.push_str(&format!(";[{cur}]{}[wv]", build_watermark(wm, wm_font, w)));
         cur = "wv".to_string();
     }
     // Intro: prefer the pre-rendered image (supports emoji/fonts, any ffmpeg),
@@ -559,13 +555,20 @@ pub fn run_export_inner(
     if n == 0 {
         return Err("no clips to export".into());
     }
+    // These land on the FFmpeg command line verbatim; only accept what the
+    // plan builder can produce, so a malformed plan fails here, not in FFmpeg.
+    if !VCODECS.contains(&plan.vcodec.as_str()) {
+        return Err(format!("unsupported video codec \"{}\"", plan.vcodec));
+    }
+    if !FF_PRESETS.contains(&plan.ff_preset.as_str()) {
+        return Err(format!("unsupported encoder preset \"{}\"", plan.ff_preset));
+    }
     let total: f64 = plan.clips.iter().map(|c| c.length_sec).sum();
     let drawtext_font = if has_drawtext() { resolve_overlay_font(plan) } else { None };
 
-    // Decode the UI-rendered title-card images (support emoji + fonts) to temp PNGs.
-    // `TempPath`, not a bare PathBuf: the old predictable `tf_<name>_<pid>.png`
-    // was both pre-creatable as a symlink by another local user and never
-    // unlinked, so every export leaked a PNG into the shared temp dir.
+    // Decode the UI-rendered title-card images (support emoji + fonts) to temp
+    // PNGs. `TempPath` (ADR 0003): a random, 0600 name that is unlinked on drop,
+    // so nothing is pre-creatable and nothing leaks into the temp dir.
     let decode_png = |b64: &Option<String>, name: &str| -> Option<tempfile::TempPath> {
         b64.as_ref().and_then(|b64| {
             base64::engine::general_purpose::STANDARD.decode(b64).ok().and_then(|bytes| {
@@ -625,7 +628,6 @@ pub fn run_export_inner(
     };
     let intro_img_input = img_input(&intro_png, &plan.intro);
     let outro_img_input = img_input(&outro_png, &plan.outro);
-    let _ = next;
 
     let (fc, vlabel) = build_filter_complex(
         plan,
@@ -671,11 +673,7 @@ pub fn run_export_inner(
                 }
             }
             FfmpegEvent::Error(e) => last_err = e,
-            FfmpegEvent::Log(_, msg) => {
-                if msg.to_lowercase().contains("error") {
-                    last_err = msg;
-                }
-            }
+            FfmpegEvent::Log(_, msg) if msg.to_lowercase().contains("error") => last_err = msg,
             _ => {}
         }
     }
@@ -716,13 +714,13 @@ mod tests {
     /// export without it silently disagrees with what the user approved.
     #[test]
     fn watermark_burns_in_its_shadow() {
-        let f = build_watermark(&watermark(true), "/tmp/font.ttf", 1920, 1080);
+        let f = build_watermark(&watermark(true), "/tmp/font.ttf", 1920);
         assert!(f.contains(":shadowcolor=black@0.900:shadowx=6:shadowy=-4"), "{f}");
     }
 
     #[test]
     fn watermark_shadow_off_adds_nothing() {
-        let f = build_watermark(&watermark(false), "/tmp/font.ttf", 1920, 1080);
+        let f = build_watermark(&watermark(false), "/tmp/font.ttf", 1920);
         assert!(!f.contains("shadow"), "{f}");
     }
 }

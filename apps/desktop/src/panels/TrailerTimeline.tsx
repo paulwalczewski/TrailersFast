@@ -1,19 +1,35 @@
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { PlayerRef } from "@remotion/player";
-import { MIN_CLIP_SEC, buildTrailerClips, byId, totalFrames, trailerDuration } from "@trailerfast/core";
+import {
+  buildTrailerClips,
+  byId,
+  MIN_CLIP_SEC,
+  totalFrames,
+  trailerDuration,
+} from "@trailerfast/core";
 import { useTrailerStore } from "@trailerfast/state";
-import { type PointerEvent, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { PREVIEW_FPS } from "../composition/TrailerComposition";
+import { Icon } from "../ui/Icon";
 import { Playhead, playheadLeft } from "../ui/Playhead";
+import { ScrubRuler, useScrubRuler } from "../ui/ScrubRuler";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
 import { ClipTransformModal } from "./ClipTransformModal";
 
@@ -162,10 +178,10 @@ function SortableClip({
         aria-label="Position & zoom"
         title="Position & zoom"
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <Icon size={11}>
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-        </svg>
+        </Icon>
       </button>
 
       {/* Remove */}
@@ -193,7 +209,7 @@ function SortableClip({
           className={`absolute inset-y-0 z-10 flex w-2.5 cursor-ew-resize items-center justify-center from-black/45 to-transparent opacity-0 transition-opacity group-hover:opacity-100 ${
             edge === "left" ? "left-0 bg-gradient-to-r" : "right-0 bg-gradient-to-l"
           }`}
-          aria-label={edge === "left" ? "Trim clip start" : "Trim clip end"}
+          title={edge === "left" ? "Trim clip start" : "Trim clip end"}
         >
           <span className="pointer-events-none h-6 w-0.5 rounded-full bg-white/85" />
         </div>
@@ -254,8 +270,6 @@ export function TrailerTimeline({ playerRef }: Props) {
 
   const seek = useCallback((frame: number) => playerRef.current?.seekTo(frame), [playerRef]);
 
-  const rulerRef = useRef<HTMLDivElement>(null);
-  const scrubbing = useRef(false);
   const dragging = useRef(false);
   const resizing = useRef(false);
   const [configMarkerId, setConfigMarkerId] = useState<string | null>(null);
@@ -290,6 +304,7 @@ export function TrailerTimeline({ playerRef }: Props) {
     });
   }, [items]);
   const total = totalFrames(items);
+  const ruler = useScrubRuler(useCallback((frac) => seek(Math.round(frac * total)), [seek, total]));
 
   // setState with an unchanged value bails out, so this costs nothing per frame —
   // it only re-renders when the playhead actually crosses into another clip.
@@ -306,33 +321,15 @@ export function TrailerTimeline({ playerRef }: Props) {
     );
   }
 
-  function seekFrom(clientX: number) {
-    const el = rulerRef.current;
-    if (!el || total === 0) return;
-    const rect = el.getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    seek(Math.round(frac * total));
-  }
-  function onRulerDown(e: PointerEvent) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    scrubbing.current = true;
-    seekFrom(e.clientX);
-  }
-  function onRulerMove(e: PointerEvent) {
-    if (scrubbing.current) seekFrom(e.clientX);
-  }
-  function stopScrub() {
-    scrubbing.current = false;
-  }
   // Hovering the clips row moves the playhead (like the source timeline). The
   // per-clip buttons still get their clicks — a mouse-move here never blocks them.
   function onClipsHover(e: PointerEvent) {
-    if (dragging.current || scrubbing.current || resizing.current) return;
-    seekFrom(e.clientX);
+    if (dragging.current || ruler.scrubbing.current || resizing.current) return;
+    ruler.scrubAt(e.clientX);
   }
   // Pixels per second across the whole strip, for edge-resize math.
   function getPxPerSec() {
-    const el = rulerRef.current;
+    const el = ruler.rulerRef.current;
     const totalSec = trailerDuration(markers);
     if (!el || totalSec === 0) return 1;
     return el.getBoundingClientRect().width / totalSec;
@@ -348,16 +345,7 @@ export function TrailerTimeline({ playerRef }: Props) {
 
   return (
     <div className="relative rounded-xl border border-separator bg-surface p-2">
-      {/* Scrub ruler */}
-      <div
-        ref={rulerRef}
-        onPointerDown={onRulerDown}
-        onPointerMove={onRulerMove}
-        onPointerUp={stopScrub}
-        onPointerCancel={stopScrub}
-        className="mb-1 h-5 cursor-ew-resize rounded bg-surface-tertiary"
-        title="Drag to scrub the trailer"
-      />
+      <ScrubRuler ruler={ruler} title="Drag to scrub the trailer" />
 
       {/* Clips (proportional, draggable to reorder) */}
       <DndContext

@@ -21,6 +21,7 @@ apps/desktop/src-tauri/binaries/
 # local agent tooling
 .claude/
 .agents/
+skills-lock.json
 
 # graphify knowledge graph (derived; rebuild with /graphify . --update)
 graphify-out/

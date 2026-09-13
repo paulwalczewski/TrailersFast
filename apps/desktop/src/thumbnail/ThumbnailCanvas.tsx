@@ -1,6 +1,6 @@
 import type { ThumbnailConfig } from "@trailerfast/core";
 import { useEffect, useRef, useState } from "react";
-import { type LoadedFrame, drawThumbnail } from "./drawThumbnail";
+import { drawThumbnail, type LoadedFrame } from "./drawThumbnail";
 
 type Props = {
   config: ThumbnailConfig;
@@ -41,6 +41,7 @@ export function ThumbnailCanvas({ config, images, className }: Props) {
     return () => observer.disconnect();
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fontsReady is a deliberate redraw trigger
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
