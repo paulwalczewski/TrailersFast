@@ -31,6 +31,7 @@ import { Icon } from "../ui/Icon";
 import { Playhead, playheadLeft } from "../ui/Playhead";
 import { ScrubRuler, useScrubRuler } from "../ui/ScrubRuler";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
+import { TimelinePlaceholder } from "../ui/TimelinePlaceholder";
 import { ClipTransformModal } from "./ClipTransformModal";
 
 type ClipItem = {
@@ -315,9 +316,9 @@ export function TrailerTimeline({ playerRef }: Props) {
 
   if (items.length === 0) {
     return (
-      <div className="grid min-h-28 place-items-center rounded-xl border border-separator bg-surface text-sm text-muted">
+      <TimelinePlaceholder>
         Mark clips on the source timeline — they land here to reorder &amp; preview.
-      </div>
+      </TimelinePlaceholder>
     );
   }
 

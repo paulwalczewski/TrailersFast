@@ -5,6 +5,7 @@ import { Playhead } from "../ui/Playhead";
 import { ScrubRuler, useScrubRuler } from "../ui/ScrubRuler";
 import { MediaLoadingPlaceholder } from "../ui/Spinner";
 import { TimelineCursor, TRASH_PATH, useTimelineCursor } from "../ui/TimelineCursor";
+import { TimelinePlaceholder } from "../ui/TimelinePlaceholder";
 
 type Props = { playheadSec: number; onScrub: (sec: number) => void };
 
@@ -28,9 +29,9 @@ export function ThumbnailSourceTimeline({ playheadSec, onScrub }: Props) {
 
   if (placed.length === 0) {
     return (
-      <div className="grid min-h-28 place-items-center rounded-xl border border-separator bg-surface text-sm text-muted">
+      <TimelinePlaceholder>
         Select videos in the Assets tab — they appear here to pick thumbnail frames.
-      </div>
+      </TimelinePlaceholder>
     );
   }
 
