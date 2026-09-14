@@ -3,7 +3,7 @@
 <p align="center">
   <strong>The fastest way from a folder of long videos to a finished trailer.</strong><br>
   Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling.<br>
-  Every step can also be driven by an AI agent over MCP.
+  Full AI agent support over MCP.
 </p>
 
 <p align="center">
@@ -12,12 +12,11 @@
   <img alt="Platform: macOS | Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
   <a href="https://v2.tauri.app"><img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white"></a>
   <a href="https://modelcontextprotocol.io"><img alt="MCP server built in" src="https://img.shields.io/badge/MCP-server%20built%20in-8A2BE2"></a>
+  <img alt="Runs fully locally" src="https://img.shields.io/badge/privacy-runs%20fully%20locally-2ea44f">
   <a href="#contributing"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
 </p>
 
 Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player for preview · bundled FFmpeg for export. Nothing leaves your machine.
-
-> **Status:** pre-release (v0.1.0). There are no packaged installers yet; [build it from source](#getting-started) in a couple of minutes.
 
 ## Why it's fast
 
