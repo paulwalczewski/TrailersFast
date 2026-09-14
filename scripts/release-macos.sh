@@ -85,7 +85,7 @@ echo "✓ $OUT"
 [[ $PUBLISH -eq 1 ]] || { echo "  (re-run with --publish to create the GitHub Release)"; exit 0; }
 
 # 3. GitHub Release. Re-running re-uploads with --clobber and re-syncs the notes.
-echo "▸ Publishing $TAG to $REPO…"
+echo "▸ Publishing ${TAG} to ${REPO}…"
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
   gh release upload "$TAG" "$OUT" "$STABLE" --repo "$REPO" --clobber
   gh release edit "$TAG" --repo "$REPO" --title "$PRODUCT $VERSION" --notes-file "$NOTES"
