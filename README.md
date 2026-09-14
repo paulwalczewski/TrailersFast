@@ -1,7 +1,7 @@
 <h1 align="center">Trailers Fast</h1>
 
 <p align="center">
-  <strong>The fastest way to edit trailers: AI edits supported, single-click editing, preview before rendering.</strong><br>
+  <strong>The fastest way to create a trailer from your longer videos: AI edits supported, single-click editing, preview before rendering.</strong><br>
   Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling.<br>
   Full AI agent support over MCP.
 </p>
@@ -24,13 +24,15 @@ Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player 
 
 ## Why it's fast
 
-Most editors make you *build* a trailer. Trailers Fast makes you *point at* one:
+In DaVinci Resolve or Premiere you *build* a trailer: import, scrub, set in and out points, trim, arrange on a timeline. In Trailers Fast you *point at* one: a single click on the filmstrip, and that moment is a clip.
 
 1. **Drop videos** onto the Assets panel. They line up end-to-end on one source filmstrip.
 2. **Click the filmstrip** wherever something good happens. Each click marks a clip, centered on the cursor, at your default length (3 s out of the box).
 3. **Export.** Clips are trimmed, normalized and concatenated by FFmpeg in a single pass, with progress in the dialog.
 
 That's the whole workflow. Reordering is drag-and-drop, trimming is dragging a clip's edge, and every action is undoable with ⌘Z. The preview plays smoothly from small proxy encodes generated in the background, so you're never waiting on the source files.
+
+Or let an AI do the picking. Ask Claude (or any [MCP client](#built-in-ai-mcp)) to find the best scenes and it marks the clips for you, live in the app, so you get an instant preview of what it chose before anything is rendered. Drag a clip, drop a pick, undo, then export.
 
 ## Built-in AI (MCP)
 
