@@ -19,7 +19,7 @@
 Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player for preview · bundled FFmpeg for export. Nothing leaves your machine.
 
 <p align="center">
-  <img src="assets/macbook-video.webp" alt="Trailers Fast on a MacBook: clicking moments on the filmstrip and previewing the trailer" width="960">
+  <img src="assets/macbook-video.webp" alt="Trailers Fast on a MacBook: clicking moments on the filmstrip and previewing the trailer">
 </p>
 
 ## Why it's fast
