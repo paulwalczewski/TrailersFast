@@ -9,7 +9,12 @@ type Props = {
   onScrub: (sec: number) => void;
 };
 
-/** Shows the source footage at the current playhead; plays with native controls. */
+/**
+ * Shows the source footage at the current playhead; plays with native controls.
+ * Fills whatever height its section has left over (the section is `flex-1`),
+ * so the trailer preview below always ends level with the work area's padding
+ * instead of a fixed `vh` cap either scrolling or leaving a gap.
+ */
 export function SourcePreview({ playheadSec, videoRef, onScrub }: Props) {
   const assets = useTrailerStore((s) => s.assets);
   const placed = useMemo(() => placeAssets(assets), [assets]);
@@ -35,14 +40,16 @@ export function SourcePreview({ playheadSec, videoRef, onScrub }: Props) {
 
   if (!current) {
     return (
-      <div className="grid aspect-video max-h-[36vh] min-h-40 w-full place-items-center rounded-xl border border-separator bg-black/90 text-sm text-white/60">
+      <div className="grid min-h-40 w-full flex-1 place-items-center rounded-xl border border-separator bg-black/90 text-sm text-white/60">
         Add &amp; select videos to preview the source
       </div>
     );
   }
 
+  // The video is taken out of flow: in flow, its intrinsic 16:9 height would
+  // become the section's minimum and push the trailer below the fold again.
   return (
-    <div className="max-h-[36vh] overflow-hidden rounded-xl border border-separator bg-black">
+    <div className="relative min-h-40 flex-1 overflow-hidden rounded-xl border border-separator bg-black">
       <video
         key={current.asset.id}
         ref={videoRef}
@@ -63,7 +70,7 @@ export function SourcePreview({ playheadSec, videoRef, onScrub }: Props) {
           const v = e.currentTarget;
           if (!v.paused) onScrub(startSec + v.currentTime);
         }}
-        className="mx-auto aspect-video max-h-[36vh] w-full object-contain"
+        className="absolute inset-0 size-full object-contain"
       />
     </div>
   );
