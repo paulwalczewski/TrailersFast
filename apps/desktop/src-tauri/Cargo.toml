@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "1.0.0"
 description = "Trailers Fast — mark spots on long videos, get a short trailer"
 authors = ["Paul Walczewski"]
 license = "MIT"

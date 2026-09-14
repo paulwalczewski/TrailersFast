@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/paulwalczewski/trailersfast/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/paulwalczewski/trailersfast/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/paulwalczewski/trailersfast/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/paulwalczewski/trailersfast?color=orange"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Platform: macOS | Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
   <a href="https://v2.tauri.app"><img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white"></a>
@@ -64,7 +65,9 @@ You watch the trailer assemble live in the app while the agent works, and every 
 
 ## Getting started
 
-You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux).
+**Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications. Signed and notarized, nothing else to install.
+
+**Intel Mac or Linux:** build from source. You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux).
 
 ```sh
 git clone https://github.com/paulwalczewski/trailersfast.git
@@ -102,6 +105,8 @@ cd apps/desktop/src-tauri
 cargo test                                   # unit tests (needs the FFmpeg sidecar from fetch-ffmpeg.sh)
 cargo clippy --all-targets -- -D warnings    # kept warning-free
 ```
+
+`scripts/release-macos.sh` builds, signs, notarizes and (with `--publish`) uploads the macOS DMG; it needs a Developer ID certificate and a `notarytool` keychain profile, see the comments at the top.
 
 [CI](.github/workflows/ci.yml) runs all of the above on every push and pull request: the web checks on Ubuntu, clippy and the Rust tests on Ubuntu and macOS.
 
