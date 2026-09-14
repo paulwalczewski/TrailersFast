@@ -1,7 +1,7 @@
 <h1 align="center">Trailers Fast</h1>
 
 <p align="center">
-  <strong>The fastest way from a folder of long videos to a finished trailer.</strong><br>
+  <strong>The fastest way to edit trailers: AI edits supported, single-click editing, preview before rendering.</strong><br>
   Drop your footage in, click the moments you want, export. Three steps, no timeline wrangling.<br>
   Full AI agent support over MCP.
 </p>
