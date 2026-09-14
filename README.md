@@ -18,6 +18,10 @@
 
 Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player for preview · bundled FFmpeg for export. Nothing leaves your machine.
 
+<p align="center">
+  <img src="assets/macbook-video.webp" alt="Trailers Fast on a MacBook: clicking moments on the filmstrip and previewing the trailer" width="960">
+</p>
+
 ## Why it's fast
 
 Most editors make you *build* a trailer. Trailers Fast makes you *point at* one:
@@ -55,19 +59,15 @@ You watch the trailer assemble live in the app while the agent works, and every 
 
 ## Getting started
 
-Prerequisites: [Rust](https://rustup.rs) (stable), Node 22+, [pnpm](https://pnpm.io) 10, and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS (Xcode Command Line Tools on macOS; `webkit2gtk` and friends on Linux).
+You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux).
 
 ```sh
 git clone https://github.com/paulwalczewski/trailersfast.git
 cd trailersfast
 pnpm install
-scripts/fetch-ffmpeg.sh   # one-time: downloads a freetype-enabled FFmpeg sidecar for your platform
-pnpm dev                  # launches the desktop app with hot reload
+scripts/fetch-ffmpeg.sh   # once: bundles a freetype-enabled FFmpeg for your platform
+pnpm dev
 ```
-
-`scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64) and Linux x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it in CI.
-
-Build an installer for your platform with `pnpm tauri build`.
 
 ### Connecting an AI agent
 
@@ -99,6 +99,8 @@ cargo clippy --all-targets -- -D warnings    # kept warning-free
 ```
 
 [CI](.github/workflows/ci.yml) runs all of the above on every push and pull request: the web checks on Ubuntu, clippy and the Rust tests on Ubuntu and macOS.
+
+`scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64) and Linux x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it.
 
 ### How it's put together
 
