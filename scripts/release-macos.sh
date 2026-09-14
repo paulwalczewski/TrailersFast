@@ -19,7 +19,7 @@
 #        scripts/release-macos.sh --publish  # …and create/update the GitHub Release
 set -euo pipefail
 
-NOTARY_PROFILE="${NOTARY_PROFILE:-hidini-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-trailersfast-notary}"
 REPO="${REPO:-paulwalczewski/TrailersFast}"
 PUBLISH=0
 [[ "${1:-}" == "--publish" ]] && PUBLISH=1
