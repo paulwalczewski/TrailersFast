@@ -26,6 +26,12 @@ Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player 
   <img src="assets/demo.webp" alt="Trailers Fast: clicking moments on the filmstrip and previewing the trailer">
 </p>
 
+## Download
+
+**Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications.
+
+Intel Mac, Linux, or hooking up an AI agent: see [Getting started](#getting-started).
+
 ## Why it's fast
 
 In DaVinci Resolve or Premiere you *build* a trailer: import, scrub, set in and out points, trim, arrange on a timeline. In Trailers Fast you *point at* one: a single click on the filmstrip, and that moment is a clip.
@@ -65,7 +71,7 @@ You watch the trailer assemble live in the app while the agent works, and every 
 
 ## Getting started
 
-**Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications. Signed and notarized, nothing else to install.
+**Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications.
 
 **Intel Mac or Linux:** build from source. You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux).
 
