@@ -19,6 +19,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/apps/desktop/src-tauri/binaries"
 TRIPLE="$(rustc -vV | sed -n 's/host: //p')"
 OUT="$DEST/ffmpeg-$TRIPLE"
+# Tauri looks for sidecar-<triple>.exe on Windows.
+case "$TRIPLE" in *-windows-*) OUT="$OUT.exe" ;; esac
 mkdir -p "$DEST"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -67,6 +69,12 @@ case "$TRIPLE" in
     fetch "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz" "$TMP/ff.tar.xz"
     tar -xf "$TMP/ff.tar.xz" -C "$TMP"
     cp "$TMP"/ffmpeg-n8.1-*-linux64-gpl-8.1/bin/ffmpeg "$OUT"
+    ;;
+  x86_64-pc-windows-msvc)
+    # Same BtbN GPL build as Linux, win64 flavour. Run from Git Bash.
+    fetch "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-gpl-8.1.zip" "$TMP/ff.zip"
+    unzip -o "$TMP/ff.zip" -d "$TMP" >/dev/null
+    cp "$TMP"/ffmpeg-n8.1-*-win64-gpl-8.1/bin/ffmpeg.exe "$OUT"
     ;;
   *)
     echo "No download rule for $TRIPLE." >&2

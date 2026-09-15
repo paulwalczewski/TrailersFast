@@ -30,7 +30,7 @@ Desktop app for macOS and Linux. Tauri v2 (Rust) · React 19 · Remotion Player 
 
 **Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications.
 
-Intel Mac, Linux, or hooking up an AI agent: see [Getting started](#getting-started).
+Intel Mac, Linux, Windows, or hooking up an AI agent: see [Getting started](#getting-started).
 
 ## Why it's fast
 
@@ -73,7 +73,7 @@ You watch the trailer assemble live in the app while the agent works, and every 
 
 **Mac (Apple Silicon):** [download the DMG](https://github.com/paulwalczewski/trailersfast/releases/latest/download/TrailersFast-aarch64.dmg), open it, drag Trailers Fast to Applications.
 
-**Intel Mac or Linux:** build from source. You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux).
+**Intel Mac, Linux or Windows:** build from source. You need [Rust](https://rustup.rs), Node 22+ and [pnpm](https://pnpm.io). On macOS also run `xcode-select --install`; on Linux install the [Tauri system packages](https://v2.tauri.app/start/prerequisites/#linux); on Windows install the [Visual Studio C++ Build Tools and WebView2](https://v2.tauri.app/start/prerequisites/#windows) and run the commands below from Git Bash.
 
 ```sh
 git clone https://github.com/paulwalczewski/trailersfast.git
@@ -116,7 +116,7 @@ cargo clippy --all-targets -- -D warnings    # kept warning-free
 
 [CI](.github/workflows/ci.yml) runs all of the above on every push and pull request: the web checks on Ubuntu, clippy and the Rust tests on Ubuntu and macOS.
 
-`scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64) and Linux x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it.
+`scripts/fetch-ffmpeg.sh` knows macOS (arm64, x86_64), Linux x86_64 and Windows x86_64. Other targets: place a full FFmpeg build (must include `--enable-libfreetype`) at `apps/desktop/src-tauri/binaries/ffmpeg-<target-triple>`. The script prints the SHA-256 of what it downloaded; set `FFMPEG_SHA256=<digest>` to pin it.
 
 ### How it's put together
 
